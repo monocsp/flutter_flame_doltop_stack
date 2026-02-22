@@ -104,7 +104,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
   bool get debugDrawCollisionShapes => _debugDrawCollisionShapes;
 
   @override
-  Color backgroundColor() => const Color(0xFFEAF3FF);
+  Color backgroundColor() => const Color(0xFFFFFFFF);
 
   /// 이미지 충돌 힌트와 드래그 컨트롤러를 준비한 뒤 월드를 초기화합니다.
   @override
