@@ -12,6 +12,13 @@ enum CollisionShapeStrategy {
   autoFromImage,
 }
 
+/// 떨어지는 돌 1개를 나타내는 엔티티입니다.
+///
+/// 주요 역할:
+/// - 동적 Forge2D 바디 생성
+/// - 충돌 fixture 선택 및 부착
+/// - 바디 중심 기준 스프라이트 로드/렌더
+/// - 경계/돌 접촉 카운트 추적
 class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
   FallingPolygonComponent({
     required this.vertices,
@@ -59,12 +66,15 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
   bool get isTouchingBoundary => _boundaryContacts > 0;
   bool get isTouchingStone => _stoneContacts > 0;
   bool get isSelectable => isMounted && body.bodyType == BodyType.dynamic;
+
+  /// 상위 게임 로직에서 사용하는 "정지 상태" 추정값입니다.
   bool get isSettled {
     if (!isMounted) return false;
     if (!body.isAwake) return true;
     return body.linearVelocity.length2 <= 0.02 && body.angularVelocity.abs() < 0.08;
   }
 
+  /// 동적 바디를 만들고 `strategy`에 따라 fixture를 부착합니다.
   @override
   Body createBody() {
     if (_aspectLogEnabled) {
@@ -106,6 +116,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     return body;
   }
 
+  /// 스프라이트 이미지를 로드해 시각 자식 `SpriteComponent`로 붙입니다.
   @override
   Future<void> onLoad() async {
     await super.onLoad();
@@ -141,6 +152,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
+  /// 접촉 시작 시 카운트를 올려 빠른 상태 체크에 사용합니다.
   @override
   void beginContact(Object other, Contact contact) {
     if (other is BoundaryComponent) {
@@ -150,6 +162,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
+  /// 접촉 종료 시 카운트를 내려 빠른 상태 체크에 사용합니다.
   @override
   void endContact(Object other, Contact contact) {
     if (other is BoundaryComponent) {
@@ -159,12 +172,14 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
+  /// 제거 시 콜백을 게임 상위 소유자에게 전달합니다.
   @override
   void onRemove() {
     onRemoved?.call();
     super.onRemove();
   }
 
+  /// 스프라이트 로드 실패 시 대체 폴리곤을 그립니다.
   @override
   void render(Canvas canvas) {
     if (!_spriteReady && scaledVertices.isNotEmpty) {
@@ -190,6 +205,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
+  /// 여러 원 fixture로 돌 형태를 근사합니다.
   void _attachCircleCompoundFixtures(Body targetBody) {
     final size = _spriteWorldSize();
     final width = size.x;
@@ -231,6 +247,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
+  /// 정규화된 꼭짓점으로 볼록 다각형 fixture 1개를 부착합니다.
   void _attachConvexPolygonFixture(Body targetBody) {
     final safe = _toConvexWithin8(scaledVertices);
     final shape = PolygonShape()..set(safe);
@@ -242,6 +259,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     );
   }
 
+  /// 이미지 기반 힌트 다각형을 우선 사용하고 불가하면 fallback합니다.
   void _attachImageOrFallbackFixtures(Body targetBody) {
     final hint = imageCollisionHint;
     if (hint == null || hint.length < 3) {
@@ -292,6 +310,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
+  /// 다각형 꼭짓점 수를 최대 8개로 줄입니다(Forge2D 제한 대응).
   List<Vector2> _toConvexWithin8(List<Vector2> points) {
     final out = points.map((p) => Vector2.copy(p)).toList(growable: true);
     if (out.length <= 8) return out;
@@ -317,10 +336,12 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     return out;
   }
 
+  /// 월드 단위 기준 최종 렌더 가로/세로 크기입니다.
   Vector2 _spriteWorldSize() {
     return Vector2(_halfSize.x * 2, _halfSize.y * 2);
   }
 
+  /// 디버그용 fixture 외곽선 렌더입니다.
   void _renderFixtureDebug(Canvas canvas) {
     final debugPaint = Paint()
       ..color = const Color(0xAAFF2E2E)
@@ -344,6 +365,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
+  /// 종횡비와 스케일 입력으로 반쪽 크기(extents)를 계산합니다.
   static Vector2 _computeHalfSize(double aspect, double scale) {
     final safeAspect = aspect <= 0 ? 1.0 : aspect;
     if (safeAspect >= 1.0) {
@@ -355,6 +377,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
+  /// 원본 도형을 정규화한 뒤 목표 반쪽 크기로 스케일합니다.
   static List<Vector2> _buildScaledVertices(
     List<Vector2> source,
     Vector2 halfSize,

@@ -6,6 +6,9 @@ import 'package:flutter/services.dart';
 
 import '../game/stacking_game.dart';
 
+/// Flutter 앱의 루트 셸입니다.
+///
+/// `MaterialApp` 설정과 게임 화면 라우팅을 담당합니다.
 class StackingApp extends StatelessWidget {
   const StackingApp({super.key});
 
@@ -19,6 +22,7 @@ class StackingApp extends StatelessWidget {
   }
 }
 
+/// Flame 장면으로 진입하는 간단한 시작 화면입니다.
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -40,6 +44,7 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
+/// 에셋을 준비하고 Flame `GameWidget`을 올리는 화면입니다.
 class FlameScreen extends StatefulWidget {
   const FlameScreen({super.key});
 
@@ -58,6 +63,10 @@ class _FlameScreenState extends State<FlameScreen> {
     _prepareGame();
   }
 
+  /// 돌 에셋 일부를 무작위로 로드한 뒤 게임 인스턴스를 생성합니다.
+  ///
+  /// 비동기 준비/오류 처리는 Flutter에서 담당하고,
+  /// Flame 쪽은 게임 플레이에 집중하도록 분리합니다.
   Future<void> _prepareGame() async {
     try {
       final selectedAssets = await _pickRandomUnstructuredStoneAssets(count: 5);
@@ -81,6 +90,7 @@ class _FlameScreenState extends State<FlameScreen> {
     }
   }
 
+  /// `AssetManifest`에서 비정형 돌 PNG를 무작위로 선택합니다.
   Future<List<String>> _pickRandomUnstructuredStoneAssets({
     required int count,
   }) async {

@@ -13,6 +13,9 @@ import 'components/boundary_component.dart';
 import 'components/falling_polygon_component.dart';
 import 'systems/drag_controller.dart';
 
+/// 고정 스텝 물리 업데이트를 위한 Forge2D 월드 래퍼입니다.
+///
+/// 프레임레이트와 물리 업데이트를 분리해 동작 안정성을 높입니다.
 class FixedStepForge2DWorld extends Forge2DWorld {
   FixedStepForge2DWorld({
     required this.fixedStep,
@@ -29,6 +32,7 @@ class FixedStepForge2DWorld extends Forge2DWorld {
 
   double _accumulator = 0.0;
 
+  /// 프레임마다 1회 이상 고정 크기 물리 스텝을 수행합니다.
   @override
   void update(double dt) {
     f2.velocityIterations = velocityIterations;
@@ -48,6 +52,13 @@ class FixedStepForge2DWorld extends Forge2DWorld {
   }
 }
 
+/// 게임 전체를 조율하는 메인 클래스입니다.
+///
+/// 주요 역할:
+/// - 월드/카메라 구성
+/// - 돌 이미지 메타데이터 준비
+/// - 돌 스폰/추적/디스폰 관리
+/// - 포인터 입력을 드래그 제어로 연결
 class StackingGame extends Forge2DGame with ScaleDetector {
   StackingGame({
     required List<String> stoneSpriteAssets,
@@ -95,6 +106,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
   @override
   Color backgroundColor() => const Color(0xFFEAF3FF);
 
+  /// 이미지 충돌 힌트와 드래그 컨트롤러를 준비한 뒤 월드를 초기화합니다.
   @override
   Future<void> onLoad() async {
     await super.onLoad();
@@ -119,6 +131,9 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     _tryInitializeWorld();
   }
 
+  /// 뷰포트 크기와 카메라 줌으로 월드 크기를 계산합니다.
+  ///
+  /// `onLoad`와 이 단계가 모두 완료된 뒤에만 월드를 실제로 만듭니다.
   @override
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
@@ -135,23 +150,27 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     _tryInitializeWorld();
   }
 
+  /// 한 손가락 터치 시작 시 바디 드래그를 시작합니다.
   @override
   void onScaleStart(ScaleStartInfo info) {
     if (info.pointerCount != 1) return;
     _dragController.startDrag(screenToWorld(info.eventPosition.widget));
   }
 
+  /// 손가락 이동 중 드래그 타겟을 갱신합니다.
   @override
   void onScaleUpdate(ScaleUpdateInfo info) {
     if (info.pointerCount != 1) return;
     _dragController.updateDrag(screenToWorld(info.eventPosition.widget));
   }
 
+  /// 터치 제스처 종료 시 드래그를 종료합니다.
   @override
   void onScaleEnd(ScaleEndInfo info) {
     _dragController.endDrag();
   }
 
+  /// 프레임 루프: 드래그 보정, 개수 동기화, 스폰/디스폰 유지 관리.
   @override
   void update(double dt) {
     super.update(dt);
@@ -171,6 +190,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     _despawnOutOfBoundsStones();
   }
 
+  /// 모든 활성 돌의 fixture 디버그 렌더를 켜고 끕니다.
   void setDebugCollisionRendering(bool enabled) {
     _debugDrawCollisionShapes = enabled;
     for (final stone in _activeStones) {
@@ -178,10 +198,12 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     }
   }
 
+  /// UI에서 호출하는 수동 스폰 진입점입니다.
   void spawnNow() {
     _spawnStone();
   }
 
+  /// 모든 돌을 비우고 초기 개수만큼 다시 채웁니다.
   void resetGame() {
     _dragController.endDrag();
     for (final stone in List<FallingPolygonComponent>.from(_activeStones)) {
@@ -194,6 +216,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     }
   }
 
+  /// 랜덤 파라미터로 새 돌을 생성해 월드에 추가합니다.
   void _spawnStone({double seedOffset = 0.0}) {
     if (_worldSize == null) return;
     if (_activeStones.length >= maxActiveStones) return;
@@ -253,6 +276,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     world.add(stone);
   }
 
+  /// 프레임 경계에서 활성 돌 개수 갱신을 예약합니다.
   void _scheduleActiveStoneCountSync() {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       final refreshed = _activeStones.length;
@@ -262,6 +286,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     });
   }
 
+  /// 실제 월드 자식 상태와 활성 돌 개수를 동기화합니다.
   void _syncActiveStoneCountFromWorld() {
     final count = world.children
         .whereType<FallingPolygonComponent>()
@@ -279,6 +304,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     });
   }
 
+  /// 준비 조건이 모두 갖춰지면 경계와 초기 돌을 생성합니다.
   void _tryInitializeWorld() {
     if (_worldBuilt) return;
     if (!_assetsPrepared) return;
@@ -291,6 +317,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     _worldBuilt = true;
   }
 
+  /// 이미지별 종횡비와 선택적 충돌 힌트를 미리 계산합니다.
   Future<void> _prepareImageCollisionHints() async {
     _imageCollisionHints.clear();
     _imageAspectRatios.clear();
@@ -320,6 +347,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     }
   }
 
+  /// 이미지 알파 픽셀에서 정규화된 볼록 껍질 형태 힌트를 추출합니다.
   List<Vector2>? _buildCollisionHintFromDecoded(img.Image decoded) {
     final opaque = <Vector2>[];
     for (var y = 0; y < decoded.height; y += 2) {
@@ -388,6 +416,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
         .toList(growable: false);
   }
 
+  /// 기본 폴리곤 경계로부터 fallback 종횡비를 계산합니다.
   double _estimateAspectFromBaseShape(List<Vector2> points) {
     var minX = double.infinity;
     var maxX = -double.infinity;
@@ -411,6 +440,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     return aspect;
   }
 
+  /// 유틸: 점 집합의 중심점을 계산합니다.
   Vector2 _centroid(List<Vector2> points) {
     var x = 0.0;
     var y = 0.0;
@@ -421,6 +451,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     return Vector2(x / points.length, y / points.length);
   }
 
+  /// 유틸: 거의 중복되는 점을 제거합니다.
   List<Vector2> _dedup(List<Vector2> points) {
     final out = <Vector2>[];
     for (final p in points) {
@@ -430,6 +461,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     return out;
   }
 
+  /// 유틸: 단조 체인 방식으로 볼록 껍질을 계산합니다.
   List<Vector2> _convexHull(List<Vector2> points) {
     if (points.length <= 2) return points;
     final sorted = points.map(Vector2.copy).toList(growable: true)
@@ -467,6 +499,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     return [...lower, ...upper];
   }
 
+  /// 패딩된 월드 영역 밖으로 나간 돌을 제거합니다.
   void _despawnOutOfBoundsStones() {
     if (_worldSize == null) return;
     final maxY = _worldSize!.y + despawnMargin;
@@ -486,6 +519,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     }
   }
 
+  /// 스프라이트가 없을 때 사용하는 대체 렌더 색상입니다.
   static const List<Color> _fallbackColors = <Color>[
     Color(0xFF7AA2FF),
     Color(0xFFFF8A65),
@@ -494,6 +528,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     Color(0xFFBA68C8),
   ];
 
+  /// 도형 템플릿으로 쓰는 기본 정규화 폴리곤 목록입니다.
   static final List<List<Vector2>> _basePolygons = <List<Vector2>>[
     [
       Vector2(-0.9, -0.5),

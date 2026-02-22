@@ -1,5 +1,6 @@
 import 'package:flame_forge2d/flame_forge2d.dart';
 
+/// 마우스 조인트 기반 드래그 튜닝값입니다.
 class DragTuning {
   const DragTuning({
     this.pickRadius = 3.2,
@@ -18,6 +19,10 @@ class DragTuning {
   final double angularDampingGain;
 }
 
+/// 포인터 입력을 Forge2D 드래그 동작으로 변환합니다.
+///
+/// 내부적으로 `MouseJoint`와 프레임별 속도 보정을 함께 사용해
+/// 드래그 반응성을 유지합니다.
 class DragController {
   DragController({
     required this.world,
@@ -34,10 +39,12 @@ class DragController {
   Body? _draggedBody;
   Vector2? _dragTarget;
 
+  /// `MouseJoint` 생성에 필요한 정적 기준 바디를 만듭니다.
   Future<void> initialize() async {
     _groundBody = world.createBody(BodyDef()..type = BodyType.static);
   }
 
+  /// 가장 가까운 드래그 가능 바디를 골라 드래그 조인트를 시작합니다.
   void startDrag(Vector2 worldPoint) {
     _destroyJoint();
 
@@ -77,12 +84,14 @@ class DragController {
     selectedBody.setAwake(true);
   }
 
+  /// 현재 드래그 타겟 좌표를 갱신합니다.
   void updateDrag(Vector2 worldPoint) {
     if (_mouseJoint == null) return;
     _dragTarget = worldPoint;
     _mouseJoint!.setTarget(worldPoint);
   }
 
+  /// 드래그를 종료하고 조인트를 해제합니다.
   void endDrag() {
     _destroyJoint();
     if (_draggedBody != null) {
@@ -93,6 +102,7 @@ class DragController {
     _dragTarget = null;
   }
 
+  /// 드래그 중 프레임마다 속도/회전을 안정화합니다.
   void tick() {
     if (_draggedBody == null || _dragTarget == null) return;
     final toTarget = _dragTarget! - _draggedBody!.position;
@@ -101,6 +111,7 @@ class DragController {
     _draggedBody!.setAwake(true);
   }
 
+  /// 현재 마우스 조인트가 있으면 안전하게 제거합니다.
   void _destroyJoint() {
     if (_mouseJoint == null) return;
     world.destroyJoint(_mouseJoint!);
