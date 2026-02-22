@@ -216,7 +216,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
         : _estimateAspectFromBaseShape(baseShape);
     final fallbackColor = _fallbackColors[_random.nextInt(_fallbackColors.length)];
     final launchVelocity = Vector2((_random.nextDouble() - 0.5) * 0.8, 0.0);
-    final sizeScale = (2.05 + _random.nextDouble() * 0.35) * 2.0;
+    final sizeScale = (2.05 + _random.nextDouble() * 0.35) * 4.0;
     if (_aspectLogEnabled) {
       debugPrint(
         '[ASPECT][SPAWN] sprite="$spritePath" hasImageAspect=$hasImageAspect '
