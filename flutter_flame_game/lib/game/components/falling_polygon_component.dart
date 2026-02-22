@@ -29,6 +29,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     required this.initialAngle,
     this.initialLinearVelocity,
     this.sizeScale = 2.1,
+    this.densityMultiplier = 1.0,
     this.strategy = CollisionShapeStrategy.circleCompound,
     this.maxFixturesPerBody = 4,
     this.debugDrawFixtures = false,
@@ -45,6 +46,10 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
   final double initialAngle;
   final Vector2? initialLinearVelocity;
   final double sizeScale;
+  /// 이미지별 무게 배수(1.0이 기본).
+  ///
+  /// 최종 밀도는 `기본 밀도 * densityMultiplier`로 계산됩니다.
+  final double densityMultiplier;
   final CollisionShapeStrategy strategy;
   final int maxFixturesPerBody;
   bool debugDrawFixtures;
@@ -52,6 +57,13 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
   final bool enableContinuousCollision;
   final List<Vector2>? imageCollisionHint;
   static const bool _aspectLogEnabled = true;
+  // 무게감(질량)에 직접 영향: fixture 밀도(density).
+  // 같은 크기라면 density를 올릴수록 질량이 증가합니다.
+  static const double _stoneDensity = 3.8;
+  // 무게감 보조 파라미터: 마찰/탄성.
+  // 탄성을 낮추면 튀는 느낌이 줄어 더 묵직하게 보입니다.
+  static const double _stoneFriction = 1.0;
+  static const double _stoneRestitution = 0.0;
 
   bool _spriteReady = false;
   int _boundaryContacts = 0;
@@ -74,6 +86,8 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     return body.linearVelocity.length2 <= 0.02 && body.angularVelocity.abs() < 0.08;
   }
 
+  double get _resolvedDensity => (_stoneDensity * densityMultiplier).clamp(2.8, 8.0);
+
   /// 동적 바디를 만들고 `strategy`에 따라 fixture를 부착합니다.
   @override
   Body createBody() {
@@ -94,8 +108,9 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
       ..angle = initialAngle
       ..linearVelocity = initialLinearVelocity ?? Vector2.zero()
       ..allowSleep = true
-      ..angularDamping = 1.2
-      ..linearDamping = 0.55
+      // 무게감은 유지하되 낙하가 답답하지 않도록 선형 감쇠를 더 낮춥니다.
+      ..angularDamping = 2.4
+      ..linearDamping = 0.2
       ..bullet = enableContinuousCollision;
 
     final body = world.createBody(bodyDef);
@@ -240,9 +255,9 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
 
       targetBody.createFixture(
         FixtureDef(shape)
-          ..density = 0.9
-          ..friction = 0.88
-          ..restitution = 0.01,
+          ..density = _resolvedDensity
+          ..friction = _stoneFriction
+          ..restitution = _stoneRestitution,
       );
     }
   }
@@ -253,9 +268,9 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     final shape = PolygonShape()..set(safe);
     targetBody.createFixture(
       FixtureDef(shape)
-        ..density = 0.9
-        ..friction = 0.85
-        ..restitution = 0.01,
+        ..density = _resolvedDensity
+        ..friction = _stoneFriction
+        ..restitution = _stoneRestitution,
     );
   }
 
@@ -290,9 +305,9 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
       final shape = PolygonShape()..set(safe);
       targetBody.createFixture(
         FixtureDef(shape)
-          ..density = 0.9
-          ..friction = 0.85
-          ..restitution = 0.01,
+          ..density = _resolvedDensity
+          ..friction = _stoneFriction
+          ..restitution = _stoneRestitution,
       );
       if (_aspectLogEnabled) {
         debugPrint(

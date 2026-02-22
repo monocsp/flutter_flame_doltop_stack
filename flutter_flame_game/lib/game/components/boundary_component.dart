@@ -48,9 +48,9 @@ class BoundaryComponent extends BodyComponent {
         0,
       );
 
-    body.createFixture(FixtureDef(leftWall)..friction = 0.62..restitution = 0.0);
-    body.createFixture(FixtureDef(rightWall)..friction = 0.62..restitution = 0.0);
-    body.createFixture(FixtureDef(floor)..friction = 0.68..restitution = 0.0);
+    body.createFixture(FixtureDef(leftWall)..friction = 0.9..restitution = 0.0);
+    body.createFixture(FixtureDef(rightWall)..friction = 0.9..restitution = 0.0);
+    body.createFixture(FixtureDef(floor)..friction = 1.0..restitution = 0.0);
 
     return body;
   }

@@ -72,9 +72,9 @@ class StackingGame extends Forge2DGame with ScaleDetector {
            maxSubSteps: 6,
            velocityIterations: 8,
            positionIterations: 3,
-           gravity: Vector2(0, 13),
+           gravity: Vector2(0, 18),
          ),
-         gravity: Vector2(0, 13),
+         gravity: Vector2(0, 18),
          zoom: 10,
        );
 
@@ -87,6 +87,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
   final List<FallingPolygonComponent> _activeStones = [];
   final Map<String, List<Vector2>> _imageCollisionHints = {};
   final Map<String, double> _imageAspectRatios = {};
+  final Map<String, double> _imageDensityMultipliers = {};
   final ValueNotifier<int> activeStoneCount = ValueNotifier(0);
 
   static const int maxActiveStones = 36;
@@ -237,14 +238,17 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     final imageAspectRatio = hasImageAspect
         ? _imageAspectRatios[spritePath]!
         : _estimateAspectFromBaseShape(baseShape);
+    final densityMultiplier = _imageDensityMultipliers[spritePath] ?? 1.0;
     final fallbackColor = _fallbackColors[_random.nextInt(_fallbackColors.length)];
-    final launchVelocity = Vector2((_random.nextDouble() - 0.5) * 0.8, 0.0);
+    // 초기 횡속도를 줄여 가벼운 "튀어나감" 느낌을 완화.
+    final launchVelocity = Vector2((_random.nextDouble() - 0.5) * 0.35, 0.0);
     final sizeScale = (2.05 + _random.nextDouble() * 0.35) * 4.0;
     if (_aspectLogEnabled) {
       debugPrint(
         '[ASPECT][SPAWN] sprite="$spritePath" hasImageAspect=$hasImageAspect '
         'aspectUsed=${imageAspectRatio.toStringAsFixed(4)} '
         'sizeScale=${sizeScale.toStringAsFixed(4)} '
+        'densityMultiplier=${densityMultiplier.toStringAsFixed(3)} '
         'hintPoints=${imageHint?.length ?? 0}',
       );
     }
@@ -259,6 +263,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
       initialAngle: angle,
       initialLinearVelocity: launchVelocity,
       sizeScale: sizeScale,
+      densityMultiplier: densityMultiplier,
       strategy: enableImageCollisionHints
           ? CollisionShapeStrategy.autoFromImage
           : CollisionShapeStrategy.circleCompound,
@@ -321,17 +326,22 @@ class StackingGame extends Forge2DGame with ScaleDetector {
   Future<void> _prepareImageCollisionHints() async {
     _imageCollisionHints.clear();
     _imageAspectRatios.clear();
+    _imageDensityMultipliers.clear();
+    final rawMassByAsset = <String, double>{};
     for (final assetPath in stoneSpriteAssets) {
       try {
         final bytes = (await rootBundle.load(assetPath)).buffer.asUint8List();
         final decoded = img.decodeImage(bytes);
         if (decoded == null) continue;
         final aspect = decoded.width / decoded.height;
+        final pixelArea = (decoded.width * decoded.height).toDouble();
+        rawMassByAsset[assetPath] = pixelArea;
         _imageAspectRatios[assetPath] = aspect;
         if (_aspectLogEnabled) {
           debugPrint(
             '[ASPECT][IMAGE] asset="$assetPath" width=${decoded.width} '
-            'height=${decoded.height} aspect=${aspect.toStringAsFixed(4)}',
+            'height=${decoded.height} area=${pixelArea.toStringAsFixed(0)} '
+            'aspect=${aspect.toStringAsFixed(4)}',
           );
         }
         final hint = _buildCollisionHintFromDecoded(decoded);
@@ -344,6 +354,26 @@ class StackingGame extends Forge2DGame with ScaleDetector {
           }
         }
       } catch (_) {}
+    }
+
+    if (rawMassByAsset.isEmpty) return;
+    final meanArea =
+        rawMassByAsset.values.reduce((a, b) => a + b) / rawMassByAsset.length;
+    for (final entry in rawMassByAsset.entries) {
+      final normalized = (entry.value / meanArea).clamp(0.5, 2.6);
+      // 차이를 더 분명하게 보이게 비선형으로 스케일하고,
+      // 범위를 제한해 게임성이 깨지지 않도록 제어합니다.
+      final emphasized = math.pow(normalized, 1.25).toDouble();
+      final densityMultiplier = emphasized.clamp(0.75, 1.9);
+      _imageDensityMultipliers[entry.key] = densityMultiplier;
+      if (_aspectLogEnabled) {
+        debugPrint(
+          '[MASS][IMAGE] asset="${entry.key}" '
+          'area=${entry.value.toStringAsFixed(0)} '
+          'normalized=${normalized.toStringAsFixed(3)} '
+          'densityMultiplier=${densityMultiplier.toStringAsFixed(3)}',
+        );
+      }
     }
   }
 
