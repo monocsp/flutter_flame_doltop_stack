@@ -1,0 +1,44 @@
+[
+  {
+    "id": "unstructured_1",
+    "imagePath": "unstructured/td_1_1_1.png",
+    "polygons": [[[0.1, 0.2], [0.9, 0.2], [0.8, 0.8], [0.2, 0.8]]],
+    "anchor": [0.5, 0.5],
+    "scale": 1.0
+  },
+  {
+    "id": "unstructured_2",
+    "imagePath": "unstructured/td_1_2_1.png",
+    "polygons": [[[0.2, 0.1], [0.8, 0.1], [0.9, 0.9], [0.1, 0.9]]],
+    "anchor": [0.5, 0.5],
+    "scale": 1.0
+  },
+  {
+    "id": "unstructured_3",
+    "imagePath": "unstructured/td_1_3_1.png",
+    "polygons": [[[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]],
+    "anchor": [0.5, 0.5],
+    "scale": 1.0
+  },
+  {
+    "id": "unstructured_4",
+    "imagePath": "unstructured/td_1_10_1.png",
+    "polygons": [[[0.2, 0.2], [0.8, 0.1], [0.9, 0.8], [0.1, 0.9]]],
+    "anchor": [0.5, 0.5],
+    "scale": 1.0
+  },
+  {
+    "id": "structured_1",
+    "imagePath": "structured/td_2_1_1.png",
+    "polygons": [[[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]],
+    "anchor": [0.5, 0.5],
+    "scale": 1.0
+  },
+  {
+    "id": "structured_2",
+    "imagePath": "structured/td_2_2_1.png",
+    "polygons": [[[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]],
+    "anchor": [0.5, 0.5],
+    "scale": 1.0
+  }
+]
