@@ -59,7 +59,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
   static const bool _aspectLogEnabled = true;
   // 무게감(질량)에 직접 영향: fixture 밀도(density).
   // 같은 크기라면 density를 올릴수록 질량이 증가합니다.
-  static const double _stoneDensity = 3.8;
+  static const double _stoneDensity = 6.0;
   // 무게감 보조 파라미터: 마찰/탄성.
   // 탄성을 낮추면 튀는 느낌이 줄어 더 묵직하게 보입니다.
   static const double _stoneFriction = 1.0;
@@ -86,7 +86,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     return body.linearVelocity.length2 <= 0.02 && body.angularVelocity.abs() < 0.08;
   }
 
-  double get _resolvedDensity => (_stoneDensity * densityMultiplier).clamp(2.8, 8.0);
+  double get _resolvedDensity => (_stoneDensity * densityMultiplier).clamp(2.8, 12.0);
 
   /// 동적 바디를 만들고 `strategy`에 따라 fixture를 부착합니다.
   @override
@@ -109,8 +109,8 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
       ..linearVelocity = initialLinearVelocity ?? Vector2.zero()
       ..allowSleep = true
       // 무게감은 유지하되 낙하가 답답하지 않도록 선형 감쇠를 더 낮춥니다.
-      ..angularDamping = 2.4
-      ..linearDamping = 0.2
+      ..angularDamping = 1.5
+      ..linearDamping = 0.02
       ..bullet = enableContinuousCollision;
 
     final body = world.createBody(bodyDef);
