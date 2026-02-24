@@ -62,7 +62,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
   static const double _stoneDensity = 6.0;
   // 무게감 보조 파라미터: 마찰/탄성.
   // 탄성을 낮추면 튀는 느낌이 줄어 더 묵직하게 보입니다.
-  static const double _stoneFriction = 1.0;
+  static const double _stoneFriction = 4.0;
   static const double _stoneRestitution = 0.0;
 
   bool _spriteReady = false;
@@ -108,9 +108,9 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
       ..angle = initialAngle
       ..linearVelocity = initialLinearVelocity ?? Vector2.zero()
       ..allowSleep = true
-      // 무게감은 유지하되 낙하가 답답하지 않도록 선형 감쇠를 더 낮춥니다.
-      ..angularDamping = 1.5
-      ..linearDamping = 0.02
+      // 무게감은 유지하되 튀는 느낌을 줄이기 위해 회전 감쇠는 높이고, 낙하 속도를 위해 선형 감쇠는 다시 낮춥니다.
+      ..angularDamping = 4.0
+      ..linearDamping = 0.1
       ..bullet = enableContinuousCollision;
 
     final body = world.createBody(bodyDef);

@@ -71,10 +71,10 @@ class StackingGame extends Forge2DGame with ScaleDetector {
            fixedStep: 1 / 60,
            maxSubSteps: 6,
            velocityIterations: 8,
-           positionIterations: 3,
-           gravity: Vector2(0, 35),
+           positionIterations: 12,
+           gravity: Vector2(0, 50),
          ),
-         gravity: Vector2(0, 35),
+         gravity: Vector2(0, 50),
          zoom: 10,
        );
 
