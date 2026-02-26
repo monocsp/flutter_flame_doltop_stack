@@ -8,11 +8,7 @@ import 'package:flutter/material.dart';
 import '../assets/stone_asset_data.dart';
 import 'boundary_component.dart';
 
-enum CollisionShapeStrategy {
-  circleCompound,
-  convexPolygon,
-  autoFromImage,
-}
+enum CollisionShapeStrategy { circleCompound, convexPolygon, autoFromImage }
 
 /// 떨어지는 돌 1개를 나타내는 엔티티입니다.
 ///
@@ -35,6 +31,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     this.debugDrawFixtures = false,
     this.onRemoved,
     this.enableContinuousCollision = false,
+    required this.spawnedAtSeconds,
   });
 
   final List<Vector2> vertices;
@@ -44,12 +41,13 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
   final double initialAngle;
   final Vector2? initialLinearVelocity;
   final double sizeScale;
-  
+
   final CollisionShapeStrategy strategy;
   final int maxFixturesPerBody;
   bool debugDrawFixtures;
   final VoidCallback? onRemoved;
   final bool enableContinuousCollision;
+  final double spawnedAtSeconds;
 
   String get imageAssetPath => assetData.assetPath;
   double get imageAspectRatio => assetData.aspectRatio;
@@ -81,10 +79,12 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
   bool get isSettled {
     if (!isMounted) return false;
     if (!body.isAwake) return true;
-    return body.linearVelocity.length2 <= 0.02 && body.angularVelocity.abs() < 0.08;
+    return body.linearVelocity.length2 <= 0.02 &&
+        body.angularVelocity.abs() < 0.08;
   }
 
-  double get _resolvedDensity => (_stoneDensity * densityMultiplier).clamp(2.8, 12.0);
+  double get _resolvedDensity =>
+      (_stoneDensity * densityMultiplier).clamp(2.8, 12.0);
 
   /// 동적 바디를 만들고 `strategy`에 따라 fixture를 부착합니다.
   @override
@@ -202,7 +202,8 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
         ..strokeWidth = 0.06
         ..style = PaintingStyle.stroke;
 
-      final path = Path()..moveTo(scaledVertices.first.x, scaledVertices.first.y);
+      final path = Path()
+        ..moveTo(scaledVertices.first.x, scaledVertices.first.y);
       for (var i = 1; i < scaledVertices.length; i++) {
         path.lineTo(scaledVertices[i].x, scaledVertices[i].y);
       }
@@ -329,10 +330,11 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
         final prev = out[(i - 1 + out.length) % out.length];
         final curr = out[i];
         final next = out[(i + 1) % out.length];
-        final loss = ((prev.x * (curr.y - next.y)) +
-                (curr.x * (next.y - prev.y)) +
-                (next.x * (prev.y - curr.y)))
-            .abs();
+        final loss =
+            ((prev.x * (curr.y - next.y)) +
+                    (curr.x * (next.y - prev.y)) +
+                    (next.x * (prev.y - curr.y)))
+                .abs();
         if (loss < minLoss) {
           minLoss = loss;
           minIndex = i;
@@ -360,7 +362,8 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
         canvas.drawCircle(Offset(c.x, c.y), shape.radius, debugPaint);
       } else if (shape is PolygonShape) {
         if (shape.vertices.isEmpty) continue;
-        final path = Path()..moveTo(shape.vertices.first.x, shape.vertices.first.y);
+        final path = Path()
+          ..moveTo(shape.vertices.first.x, shape.vertices.first.y);
         for (var i = 1; i < shape.vertices.length; i++) {
           path.lineTo(shape.vertices[i].x, shape.vertices[i].y);
         }
