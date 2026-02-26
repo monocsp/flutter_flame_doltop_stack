@@ -191,14 +191,25 @@ class _FlameScreenState extends State<FlameScreen> {
             Positioned(
               top: 12,
               right: 12,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  FilledButton.tonal(
-                    onPressed: game.spawnNow,
-                    child: const Text('추가'),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: TextButton(
+                  onPressed: game.spawnNow,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    textStyle: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ],
+                  child: const Text('추가'),
+                ),
               ),
             ),
           ],
