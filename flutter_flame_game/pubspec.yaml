@@ -40,6 +40,8 @@ dependencies:
   image: ^4.7.2
   dart_earcut: ^1.2.0
   path_provider: ^2.1.5
+  flame_svg: ^1.11.20
+  xml: ^6.6.1
 
 dev_dependencies:
   flutter_test:
