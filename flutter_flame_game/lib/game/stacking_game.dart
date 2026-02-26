@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flame/components.dart';
@@ -11,8 +12,10 @@ import 'package:flutter/services.dart';
 import 'components/boundary_component.dart';
 import 'components/falling_polygon_component.dart';
 import 'components/looping_background_component.dart';
+import 'components/terrain_floor_component.dart';
 import 'assets/stone_asset_data.dart';
 import 'assets/png_processor.dart';
+import 'terrain/terrain_profile_extractor.dart';
 import 'systems/drag_controller.dart';
 
 /// 돌의 외형 분류를 정의합니다.
@@ -109,6 +112,8 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   /// 스폰 중복 방지를 위한 기록 관리
   final Set<String> _spawnHistory = {};
   final PngProcessor _pngProcessor = PngProcessor();
+  final TerrainProfileExtractor _terrainProfileExtractor =
+      const TerrainProfileExtractor();
 
   static const int maxActiveStones = 36;
   static const double despawnMargin = 15.0;
@@ -118,6 +123,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   static const double _initialBottomFocusLockDuration = 4.0;
 
   bool _worldBuilt = false;
+  bool _worldInitializing = false;
   bool _assetsPrepared = false;
   double _spawnAccumulator = 0.0;
   double _initialBottomFocusLockRemaining = 0.0;
@@ -173,7 +179,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
       ),
     );
     await _dragController.initialize();
-    _tryInitializeWorld();
+    await _tryInitializeWorld();
   }
 
   @override
@@ -187,7 +193,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     _globalTopY = _worldSize!.y - BoundaryComponent.floorMarginFromBottom;
     _historicalHighestTopY = _globalTopY;
     _updateTowerHeightMeters();
-    _tryInitializeWorld();
+    unawaited(_tryInitializeWorld());
   }
 
   @override
@@ -268,8 +274,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
       (stone) =>
           !_dragController.isBodyBeingDragged(stone.body) &&
           (stone.body.linearVelocity.length >= _cameraStillVelocityThreshold ||
-              stone.body.angularVelocity.abs() >=
-                  _cameraStillAngularThreshold),
+              stone.body.angularVelocity.abs() >= _cameraStillAngularThreshold),
     );
     if (_dragController.isDragging || hasMovingStoneForCamera) {
       // 움직임/터치가 감지되면 정지 카운트다운을 즉시 리셋합니다.
@@ -341,9 +346,8 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
       final isStable =
           stone.body.linearVelocity.length < _settledVelocityThreshold;
 
-      final isCandidate = age >= _heightCandidateMinAgeSeconds &&
-          hasSupportContact &&
-          isStable;
+      final isCandidate =
+          age >= _heightCandidateMinAgeSeconds && hasSupportContact && isStable;
       // 스폰 직후 공중 물체를 제외하고, 접촉 중이며 안정된 돌만 높이 후보로 사용합니다.
       if (!isCandidate) {
         continue;
@@ -363,7 +367,6 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
         _historicalHighestTopY = _globalTopY;
       }
     }
-
   }
 
   void _updateTowerHeightMeters() {
@@ -549,33 +552,64 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     });
   }
 
-  void _tryInitializeWorld() {
-    if (_worldBuilt || !_assetsPrepared || _worldSize == null) return;
+  Future<void> _tryInitializeWorld() async {
+    if (_worldBuilt ||
+        _worldInitializing ||
+        !_assetsPrepared ||
+        _worldSize == null) {
+      return;
+    }
+    _worldInitializing = true;
     final backgroundBottomY =
         _worldSize!.y - BoundaryComponent.floorBaseMarginFromBottom;
-    world.add(
-      LoopingBackgroundComponent(
-        assetPathsInOrder: const <String>[
-          'assets/background/1.png',
-          'assets/background/2.png',
-          'assets/background/3.png',
-          'assets/background/4.png',
-          'assets/background/5.png',
-          'assets/background/6.png',
-        ],
-        baseBottomY: backgroundBottomY,
-        worldWidth: _worldSize!.x,
-        bottomOverlayAssetPath: 'assets/background/base.png',
-        priority: -1000,
-      ),
-    );
-    world.add(BoundaryComponent(worldSize: _worldSize!));
-    _markHeightDisturbance();
-    _initialBottomFocusLockRemaining = _initialBottomFocusLockDuration;
-    for (var i = 0; i < initialSpawnCount; i++) {
-      _spawnStone(seedOffset: i.toDouble());
+    try {
+      world.add(
+        LoopingBackgroundComponent(
+          assetPathsInOrder: const <String>[
+            'assets/background/1.png',
+            'assets/background/2.png',
+            'assets/background/3.png',
+            'assets/background/4.png',
+            'assets/background/5.png',
+            'assets/background/6.png',
+          ],
+          baseBottomY: backgroundBottomY,
+          worldWidth: _worldSize!.x,
+          bottomOverlayAssetPath: 'assets/background/base.png',
+          priority: -1000,
+        ),
+      );
+
+      var curvedFloorAdded = false;
+      try {
+        final profile = await _terrainProfileExtractor
+            .extractTopSilhouetteFromAsset(
+              assetPath: 'assets/background/base.png',
+              worldWidth: _worldSize!.x,
+              baseBottomY: backgroundBottomY,
+            );
+        if (profile != null && profile.worldPoints.length >= 2) {
+          world.add(TerrainFloorComponent(profile: profile));
+          curvedFloorAdded = true;
+        }
+      } catch (e) {
+        debugPrint('[TerrainFloor] failed to extract terrain from image: $e');
+      }
+      world.add(
+        BoundaryComponent(
+          worldSize: _worldSize!,
+          includeFloor: !curvedFloorAdded,
+        ),
+      );
+      _markHeightDisturbance();
+      _initialBottomFocusLockRemaining = _initialBottomFocusLockDuration;
+      for (var i = 0; i < initialSpawnCount; i++) {
+        _spawnStone(seedOffset: i.toDouble());
+      }
+      _worldBuilt = true;
+    } finally {
+      _worldInitializing = false;
     }
-    _worldBuilt = true;
   }
 
   static double _estimateAspectFromBaseShape(List<Vector2> points) {
@@ -693,8 +727,8 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   }
 
   Iterable<FallingPolygonComponent> _mountedWorldStones() {
-    return world.children
-        .whereType<FallingPolygonComponent>()
-        .where((stone) => stone.isMounted);
+    return world.children.whereType<FallingPolygonComponent>().where(
+      (stone) => stone.isMounted,
+    );
   }
 }

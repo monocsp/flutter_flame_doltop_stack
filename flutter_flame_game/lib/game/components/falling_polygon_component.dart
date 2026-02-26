@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../assets/stone_asset_data.dart';
 import 'boundary_component.dart';
+import 'terrain_floor_component.dart';
 
 enum CollisionShapeStrategy { circleCompound, convexPolygon, autoFromImage }
 
@@ -169,7 +170,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
 
   @override
   void beginContact(Object other, Contact contact) {
-    if (other is BoundaryComponent) {
+    if (other is BoundaryComponent || other is TerrainFloorComponent) {
       _boundaryContacts++;
     } else if (other is FallingPolygonComponent) {
       _stoneContacts++;
@@ -178,7 +179,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
 
   @override
   void endContact(Object other, Contact contact) {
-    if (other is BoundaryComponent) {
+    if (other is BoundaryComponent || other is TerrainFloorComponent) {
       _boundaryContacts = math.max(0, _boundaryContacts - 1);
     } else if (other is FallingPolygonComponent) {
       _stoneContacts = math.max(0, _stoneContacts - 1);

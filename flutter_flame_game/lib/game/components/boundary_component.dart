@@ -6,9 +6,10 @@ import 'package:flutter/material.dart';
 /// 하나의 정적 Forge2D 바디에 3개 fixture를 붙여,
 /// 스폰된 돌이 플레이 영역 밖으로 나가지 않게 합니다.
 class BoundaryComponent extends BodyComponent {
-  BoundaryComponent({required this.worldSize});
+  BoundaryComponent({required this.worldSize, this.includeFloor = true});
 
   final Vector2 worldSize;
+  final bool includeFloor;
 
   // 물리 벽/바닥 fixture의 두께(충돌 판정 두께)입니다.
   static const double thickness = 0.8;
@@ -50,14 +51,6 @@ class BoundaryComponent extends BodyComponent {
         0,
       );
 
-    final floor = PolygonShape()
-      ..setAsBox(
-        worldSize.x / 2,
-        thickness / 2,
-        Vector2(worldSize.x / 2, floorCenterY),
-        0,
-      );
-
     body.createFixture(
       FixtureDef(leftWall)
         ..friction = 0.9
@@ -68,11 +61,20 @@ class BoundaryComponent extends BodyComponent {
         ..friction = 0.9
         ..restitution = 0.0,
     );
-    body.createFixture(
-      FixtureDef(floor)
-        ..friction = 1.0
-        ..restitution = 0.0,
-    );
+    if (includeFloor) {
+      final floor = PolygonShape()
+        ..setAsBox(
+          worldSize.x / 2,
+          thickness / 2,
+          Vector2(worldSize.x / 2, floorCenterY),
+          0,
+        );
+      body.createFixture(
+        FixtureDef(floor)
+          ..friction = 1.0
+          ..restitution = 0.0,
+      );
+    }
 
     return body;
   }
