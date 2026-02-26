@@ -134,6 +134,8 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   // 수동 조작 추적을 위한 변수
   double _autoPushCooldown = 0.0;
   static const double _manualControlLockDuration = 3.0; // 수동 조작 후 3초간 자동 추적 정지
+  static const double _cameraStillVelocityThreshold = 0.08;
+  static const double _cameraStillAngularThreshold = 0.08;
 
   // 카메라 설정 비율
   static const double _focusLineRatio = 1 / 2; // 최상단 돌을 화면의 상단 1/2 지점에 배치
@@ -259,12 +261,23 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
       camera.viewfinder.position = Vector2(0.0, _cameraBottomLimitY());
     }
 
-    if (_autoPushCooldown > 0) {
-      _autoPushCooldown -= dt;
-    }
-
     _updateGlobalTopY();
     _updateTowerHeightMeters();
+
+    final hasMovingStoneForCamera = _mountedWorldStones().any(
+      (stone) =>
+          !_dragController.isBodyBeingDragged(stone.body) &&
+          (stone.body.linearVelocity.length >= _cameraStillVelocityThreshold ||
+              stone.body.angularVelocity.abs() >=
+                  _cameraStillAngularThreshold),
+    );
+    if (_dragController.isDragging || hasMovingStoneForCamera) {
+      // 움직임/터치가 감지되면 정지 카운트다운을 즉시 리셋합니다.
+      _autoPushCooldown = _manualControlLockDuration;
+    } else if (_autoPushCooldown > 0) {
+      _autoPushCooldown = math.max(0.0, _autoPushCooldown - dt);
+    }
+
     _handleAutoCameraPush(dt);
 
     _spawnAccumulator += dt;
@@ -310,7 +323,8 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   }
 
   void _updateGlobalTopY() {
-    if (_activeStones.isEmpty) {
+    final stones = _mountedWorldStones().toList(growable: false);
+    if (stones.isEmpty) {
       if (_worldSize != null) {
         _globalTopY = _worldSize!.y - BoundaryComponent.floorMarginFromBottom;
         _historicalHighestTopY = _globalTopY;
@@ -319,8 +333,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     }
 
     double minY = double.infinity;
-    for (final stone in _activeStones) {
-      if (!stone.isMounted) continue;
+    for (final stone in stones) {
       if (_dragController.isBodyBeingDragged(stone.body)) continue;
       final age = _timeSinceStart - stone.spawnedAtSeconds;
       final hasSupportContact =
@@ -328,10 +341,11 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
       final isStable =
           stone.body.linearVelocity.length < _settledVelocityThreshold;
 
+      final isCandidate = age >= _heightCandidateMinAgeSeconds &&
+          hasSupportContact &&
+          isStable;
       // 스폰 직후 공중 물체를 제외하고, 접촉 중이며 안정된 돌만 높이 후보로 사용합니다.
-      if (age < _heightCandidateMinAgeSeconds ||
-          !hasSupportContact ||
-          !isStable) {
+      if (!isCandidate) {
         continue;
       }
 
@@ -349,6 +363,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
         _historicalHighestTopY = _globalTopY;
       }
     }
+
   }
 
   void _updateTowerHeightMeters() {
@@ -358,9 +373,9 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
       }
       return;
     }
-    final hasMovingStone = _activeStones.any(
+    final stones = _mountedWorldStones().toList(growable: false);
+    final hasMovingStone = stones.any(
       (stone) =>
-          stone.isMounted &&
           !_dragController.isBodyBeingDragged(stone.body) &&
           stone.body.linearVelocity.length >= _settledVelocityThreshold,
     );
@@ -396,6 +411,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   }
 
   void spawnNow() {
+    _autoPushCooldown = _manualControlLockDuration;
     _markHeightDisturbance();
     _spawnStone();
   }
@@ -670,5 +686,11 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   void _logCameraDebug(String message) {
     if (!kDebugMode || !_cameraDebugLogEnabled) return;
     debugPrint('[StackCam] $message');
+  }
+
+  Iterable<FallingPolygonComponent> _mountedWorldStones() {
+    return world.children
+        .whereType<FallingPolygonComponent>()
+        .where((stone) => stone.isMounted);
   }
 }
