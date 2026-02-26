@@ -2,8 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flame/components.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
+import 'package:flame_svg/flame_svg.dart';
 import 'package:flutter/material.dart';
 
+import '../assets/stone_asset_data.dart';
 import 'boundary_component.dart';
 
 enum CollisionShapeStrategy {
@@ -23,49 +25,45 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
   FallingPolygonComponent({
     required this.vertices,
     required this.fallbackColor,
-    required this.imageAssetPath,
-    required this.imageAspectRatio,
+    required this.assetData,
     required this.initialPosition,
     required this.initialAngle,
     this.initialLinearVelocity,
     this.sizeScale = 2.1,
-    this.densityMultiplier = 1.0,
     this.strategy = CollisionShapeStrategy.circleCompound,
     this.maxFixturesPerBody = 4,
     this.debugDrawFixtures = false,
     this.onRemoved,
     this.enableContinuousCollision = false,
-    this.imageCollisionHint,
   });
 
   final List<Vector2> vertices;
   final Color fallbackColor;
-  final String imageAssetPath;
-  final double imageAspectRatio;
+  final StoneAssetData assetData;
   final Vector2 initialPosition;
   final double initialAngle;
   final Vector2? initialLinearVelocity;
   final double sizeScale;
-  /// 이미지별 무게 배수(1.0이 기본).
-  ///
-  /// 최종 밀도는 `기본 밀도 * densityMultiplier`로 계산됩니다.
-  final double densityMultiplier;
+  
   final CollisionShapeStrategy strategy;
   final int maxFixturesPerBody;
   bool debugDrawFixtures;
   final VoidCallback? onRemoved;
   final bool enableContinuousCollision;
-  final List<Vector2>? imageCollisionHint;
+
+  String get imageAssetPath => assetData.assetPath;
+  double get imageAspectRatio => assetData.aspectRatio;
+  double get densityMultiplier => assetData.densityMultiplier;
+  List<Vector2>? get imageCollisionHint => assetData.collisionHint;
+
   static const bool _aspectLogEnabled = true;
   // 무게감(질량)에 직접 영향: fixture 밀도(density).
-  // 같은 크기라면 density를 올릴수록 질량이 증가합니다.
   static const double _stoneDensity = 6.0;
-  // 무게감 보조 파라미터: 마찰/탄성.
-  // 탄성을 낮추면 튀는 느낌이 줄어 더 묵직하게 보입니다.
-  static const double _stoneFriction = 4.0;
+  // 현실의 돌처럼 거친 느낌을 주기 위해 마찰력을 대폭 높입니다.
+  static const double _stoneFriction = 3.5;
   static const double _stoneRestitution = 0.0;
 
-  bool _spriteReady = false;
+  bool _visualReady = false;
   int _boundaryContacts = 0;
   int _stoneContacts = 0;
 
@@ -108,8 +106,9 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
       ..angle = initialAngle
       ..linearVelocity = initialLinearVelocity ?? Vector2.zero()
       ..allowSleep = true
-      // 무게감은 유지하되 튀는 느낌을 줄이기 위해 회전 감쇠는 높이고, 낙하 속도를 위해 선형 감쇠는 다시 낮춥니다.
-      ..angularDamping = 4.0
+      // 회전 감쇠는 유지하여 충돌 후 팽이처럼 도는 것을 방지하되,
+      // 선형 감쇠는 낮추어(0.1) 공기 저항 없이 빠르게 낙하하게 합니다.
+      ..angularDamping = 8.0
       ..linearDamping = 0.1
       ..bullet = enableContinuousCollision;
 
@@ -131,43 +130,43 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     return body;
   }
 
-  /// 스프라이트 이미지를 로드해 시각 자식 `SpriteComponent`로 붙입니다.
+  /// 스프라이트(PNG) 혹은 SVG를 로드해 시각 자식 컴포넌트로 붙입니다.
   @override
   Future<void> onLoad() async {
     await super.onLoad();
     if (imageAssetPath.isEmpty) return;
 
     try {
-      // Flame's images loader uses `assets/images/` as prefix in this project.
-      // Strip it when the path is already absolute in Flutter asset space.
-      final flamePath = imageAssetPath.startsWith('assets/images/')
-          ? imageAssetPath.substring('assets/images/'.length)
-          : imageAssetPath;
-      final image = await game.images.load(flamePath);
-      if (_aspectLogEnabled) {
-        final loadedAspect =
-            image.height == 0 ? 1.0 : image.width / image.height;
-        debugPrint(
-          '[ASPECT][SPRITE_LOAD] path="$flamePath" '
-          'loadedSize=${image.width}x${image.height} '
-          'loadedAspect=${loadedAspect.toStringAsFixed(4)} '
-          'renderSize=${_spriteWorldSize().x.toStringAsFixed(4)}x${_spriteWorldSize().y.toStringAsFixed(4)}',
+      if (assetData.isSvg) {
+        final svg = await Svg.load(imageAssetPath);
+        add(
+          SvgComponent(
+            svg: svg,
+            size: _spriteWorldSize(),
+            anchor: Anchor.center,
+          ),
         );
+        _visualReady = true;
+      } else {
+        final flamePath = imageAssetPath.startsWith('assets/images/')
+            ? imageAssetPath.substring('assets/images/'.length)
+            : imageAssetPath;
+        final image = await game.images.load(flamePath);
+        add(
+          SpriteComponent(
+            sprite: Sprite(image),
+            size: _spriteWorldSize(),
+            anchor: Anchor.center,
+          ),
+        );
+        _visualReady = true;
       }
-      add(
-        SpriteComponent(
-          sprite: Sprite(image),
-          size: _spriteWorldSize(),
-          anchor: Anchor.center,
-        ),
-      );
-      _spriteReady = true;
-    } catch (_) {
-      _spriteReady = false;
+    } catch (e) {
+      debugPrint('[FallingPolygonComponent] Failed to load visual asset: $e');
+      _visualReady = false;
     }
   }
 
-  /// 접촉 시작 시 카운트를 올려 빠른 상태 체크에 사용합니다.
   @override
   void beginContact(Object other, Contact contact) {
     if (other is BoundaryComponent) {
@@ -177,7 +176,6 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
-  /// 접촉 종료 시 카운트를 내려 빠른 상태 체크에 사용합니다.
   @override
   void endContact(Object other, Contact contact) {
     if (other is BoundaryComponent) {
@@ -187,17 +185,15 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
-  /// 제거 시 콜백을 게임 상위 소유자에게 전달합니다.
   @override
   void onRemove() {
     onRemoved?.call();
     super.onRemove();
   }
 
-  /// 스프라이트 로드 실패 시 대체 폴리곤을 그립니다.
   @override
   void render(Canvas canvas) {
-    if (!_spriteReady && scaledVertices.isNotEmpty) {
+    if (!_visualReady && scaledVertices.isNotEmpty) {
       final fillPaint = Paint()
         ..color = fallbackColor
         ..style = PaintingStyle.fill;
@@ -220,7 +216,6 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
-  /// 여러 원 fixture로 돌 형태를 근사합니다.
   void _attachCircleCompoundFixtures(Body targetBody) {
     final size = _spriteWorldSize();
     final width = size.x;
@@ -262,7 +257,6 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
-  /// 정규화된 꼭짓점으로 볼록 다각형 fixture 1개를 부착합니다.
   void _attachConvexPolygonFixture(Body targetBody) {
     final safe = _toConvexWithin8(scaledVertices);
     final shape = PolygonShape()..set(safe);
@@ -274,7 +268,6 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     );
   }
 
-  /// 이미지 기반 힌트 다각형을 우선 사용하고 불가하면 fallback합니다.
   void _attachImageOrFallbackFixtures(Body targetBody) {
     final hint = imageCollisionHint;
     if (hint == null || hint.length < 3) {
@@ -325,7 +318,6 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
-  /// 다각형 꼭짓점 수를 최대 8개로 줄입니다(Forge2D 제한 대응).
   List<Vector2> _toConvexWithin8(List<Vector2> points) {
     final out = points.map((p) => Vector2.copy(p)).toList(growable: true);
     if (out.length <= 8) return out;
@@ -351,12 +343,10 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     return out;
   }
 
-  /// 월드 단위 기준 최종 렌더 가로/세로 크기입니다.
   Vector2 _spriteWorldSize() {
     return Vector2(_halfSize.x * 2, _halfSize.y * 2);
   }
 
-  /// 디버그용 fixture 외곽선 렌더입니다.
   void _renderFixtureDebug(Canvas canvas) {
     final debugPaint = Paint()
       ..color = const Color(0xAAFF2E2E)
@@ -380,7 +370,6 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
-  /// 종횡비와 스케일 입력으로 반쪽 크기(extents)를 계산합니다.
   static Vector2 _computeHalfSize(double aspect, double scale) {
     final safeAspect = aspect <= 0 ? 1.0 : aspect;
     if (safeAspect >= 1.0) {
@@ -392,7 +381,6 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
-  /// 원본 도형을 정규화한 뒤 목표 반쪽 크기로 스케일합니다.
   static List<Vector2> _buildScaledVertices(
     List<Vector2> source,
     Vector2 halfSize,

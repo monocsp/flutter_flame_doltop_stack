@@ -7,16 +7,24 @@ import 'package:flame_forge2d/flame_forge2d.dart' as f2;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
-import 'package:image/image.dart' as img;
 
 import 'components/boundary_component.dart';
 import 'components/falling_polygon_component.dart';
+import 'assets/stone_asset_data.dart';
+import 'assets/asset_manager.dart';
+import 'assets/png_processor.dart';
 import 'systems/drag_controller.dart';
 
+/// 돌의 외형 분류를 정의합니다.
+enum StoneCategory {
+  unstructured, // 비정형 (자연스러운 돌)
+  structured,   // 정형 (가공된 모양)
+  all,          // 전체
+}
+
 /// 고정 스텝 물리 업데이트를 위한 Forge2D 월드 래퍼입니다.
-///
-/// 프레임레이트와 물리 업데이트를 분리해 동작 안정성을 높입니다.
 class FixedStepForge2DWorld extends Forge2DWorld {
+// ... (중략: FixedStepForge2DWorld 구현은 동일)
   FixedStepForge2DWorld({
     required this.fixedStep,
     required this.maxSubSteps,
@@ -32,7 +40,6 @@ class FixedStepForge2DWorld extends Forge2DWorld {
 
   double _accumulator = 0.0;
 
-  /// 프레임마다 1회 이상 고정 크기 물리 스텝을 수행합니다.
   @override
   void update(double dt) {
     f2.velocityIterations = velocityIterations;
@@ -53,18 +60,13 @@ class FixedStepForge2DWorld extends Forge2DWorld {
 }
 
 /// 게임 전체를 조율하는 메인 클래스입니다.
-///
-/// 주요 역할:
-/// - 월드/카메라 구성
-/// - 돌 이미지 메타데이터 준비
-/// - 돌 스폰/추적/디스폰 관리
-/// - 포인터 입력을 드래그 제어로 연결
 class StackingGame extends Forge2DGame with ScaleDetector {
   StackingGame({
     required List<String> stoneSpriteAssets,
+    this.category = StoneCategory.unstructured, // 기본값은 unstructured
     bool debugDrawCollisionShapes = false,
     this.enableImageCollisionHints = false,
-  }) : stoneSpriteAssets = List<String>.from(stoneSpriteAssets),
+  }) : _allAvailableAssets = List<String>.from(stoneSpriteAssets),
        _debugDrawCollisionShapes = debugDrawCollisionShapes,
        super(
          world: FixedStepForge2DWorld(
@@ -78,17 +80,33 @@ class StackingGame extends Forge2DGame with ScaleDetector {
          zoom: 10,
        );
 
-  final List<String> stoneSpriteAssets;
+  final List<String> _allAvailableAssets;
+  final StoneCategory category;
   final bool enableImageCollisionHints;
   bool _debugDrawCollisionShapes;
   static const bool _aspectLogEnabled = true;
 
+  /// 현재 카테고리 설정에 따라 필터링된 에셋 목록
+  List<String> get stoneSpriteAssets {
+    switch (category) {
+      case StoneCategory.unstructured:
+        return _allAvailableAssets.where((path) => path.contains('/unstructured/')).toList();
+      case StoneCategory.structured:
+        return _allAvailableAssets.where((path) => path.contains('/structured/')).toList();
+      case StoneCategory.all:
+        return _allAvailableAssets;
+    }
+  }
+
   final math.Random _random = math.Random();
+// ... (이하 동일)
   final List<FallingPolygonComponent> _activeStones = [];
-  final Map<String, List<Vector2>> _imageCollisionHints = {};
-  final Map<String, double> _imageAspectRatios = {};
-  final Map<String, double> _imageDensityMultipliers = {};
+  final Map<String, StoneAssetData> _stoneAssetMetadata = {};
   final ValueNotifier<int> activeStoneCount = ValueNotifier(0);
+
+  /// 스폰 중복 방지를 위한 기록 관리
+  final Set<String> _spawnHistory = {};
+  final PngProcessor _pngProcessor = PngProcessor();
 
   static const int maxActiveStones = 36;
   static const double despawnMargin = 7.0;
@@ -107,11 +125,10 @@ class StackingGame extends Forge2DGame with ScaleDetector {
   @override
   Color backgroundColor() => const Color(0xFFFFFFFF);
 
-  /// 이미지 충돌 힌트와 드래그 컨트롤러를 준비한 뒤 월드를 초기화합니다.
   @override
   Future<void> onLoad() async {
     await super.onLoad();
-    await _prepareImageCollisionHints();
+    // 더 이상 시작 시점에 수백 개를 분석하지 않고, 목록만 인지합니다.
     _assetsPrepared = true;
     _dragController = DragController(
       world: world,
@@ -121,65 +138,51 @@ class StackingGame extends Forge2DGame with ScaleDetector {
           .map((stone) => stone.body),
       tuning: const DragTuning(
         pickRadius: 3.2,
-        maxForcePerMass: 5200,
-        frequencyHz: 14.0,
-        dampingRatio: 0.96,
-        velocityGain: 18.0,
-        angularDampingGain: 0.6,
+        maxForcePerMass: 600,
+        frequencyHz: 5.0,
+        dampingRatio: 0.9,
+        velocityGain: 12.0,
+        angularDampingGain: 0.4,
       ),
     );
     await _dragController.initialize();
     _tryInitializeWorld();
   }
 
-  /// 뷰포트 크기와 카메라 줌으로 월드 크기를 계산합니다.
-  ///
-  /// `onLoad`와 이 단계가 모두 완료된 뒤에만 월드를 실제로 만듭니다.
   @override
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
-
-    if (_worldBuilt || size.x <= 0 || size.y <= 0) {
-      return;
-    }
-
+    if (_worldBuilt || size.x <= 0 || size.y <= 0) return;
     camera.viewfinder.anchor = Anchor.topLeft;
     camera.moveTo(Vector2.zero());
-
     final zoom = camera.viewfinder.zoom;
     _worldSize = Vector2(size.x / zoom, size.y / zoom);
     _tryInitializeWorld();
   }
 
-  /// 한 손가락 터치 시작 시 바디 드래그를 시작합니다.
   @override
   void onScaleStart(ScaleStartInfo info) {
     if (info.pointerCount != 1) return;
     _dragController.startDrag(screenToWorld(info.eventPosition.widget));
   }
 
-  /// 손가락 이동 중 드래그 타겟을 갱신합니다.
   @override
   void onScaleUpdate(ScaleUpdateInfo info) {
     if (info.pointerCount != 1) return;
     _dragController.updateDrag(screenToWorld(info.eventPosition.widget));
   }
 
-  /// 터치 제스처 종료 시 드래그를 종료합니다.
   @override
   void onScaleEnd(ScaleEndInfo info) {
     _dragController.endDrag();
   }
 
-  /// 프레임 루프: 드래그 보정, 개수 동기화, 스폰/디스폰 유지 관리.
   @override
   void update(double dt) {
     super.update(dt);
     _dragController.tick();
     _syncActiveStoneCountFromWorld();
-
     if (!_worldBuilt || _worldSize == null) return;
-
     _spawnAccumulator += dt;
     if (autoSpawnEnabled && _spawnAccumulator >= spawnInterval) {
       _spawnAccumulator = 0.0;
@@ -187,11 +190,9 @@ class StackingGame extends Forge2DGame with ScaleDetector {
         _spawnStone();
       }
     }
-
     _despawnOutOfBoundsStones();
   }
 
-  /// 모든 활성 돌의 fixture 디버그 렌더를 켜고 끕니다.
   void setDebugCollisionRendering(bool enabled) {
     _debugDrawCollisionShapes = enabled;
     for (final stone in _activeStones) {
@@ -199,80 +200,103 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     }
   }
 
-  /// UI에서 호출하는 수동 스폰 진입점입니다.
   void spawnNow() {
     _spawnStone();
   }
 
-  /// 모든 돌을 비우고 초기 개수만큼 다시 채웁니다.
-  void resetGame() {
-    _dragController.endDrag();
-    for (final stone in List<FallingPolygonComponent>.from(_activeStones)) {
-      stone.removeFromParent();
-    }
-    _activeStones.clear();
-    _scheduleActiveStoneCountSync();
-    for (var i = 0; i < initialSpawnCount; i++) {
-      _spawnStone(seedOffset: i.toDouble());
-    }
-  }
-
-  /// 랜덤 파라미터로 새 돌을 생성해 월드에 추가합니다.
-  void _spawnStone({double seedOffset = 0.0}) {
-    if (_worldSize == null) return;
-    if (_activeStones.length >= maxActiveStones) return;
+  /// 차집합(Subtraction) 로직을 적용한 새 돌 스폰
+  Future<void> _spawnStone({double seedOffset = 0.0}) async {
+    if (_worldSize == null || _activeStones.length >= maxActiveStones) return;
 
     final worldSize = _worldSize!;
-    const laneXs = <double>[0.20, 0.34, 0.50, 0.66, 0.80];
-    final lane = laneXs[_random.nextInt(laneXs.length)];
-    final x = worldSize.x * lane + (_random.nextDouble() - 0.5) * 0.9;
-    final y = 1.0 + seedOffset;
-    final angle = (_random.nextDouble() - 0.5) * (math.pi / 18);
+    
+    // 1. 현재 화면에 있는 에셋 경로 수집
+    final currentlyOnScreen = _activeStones.map((s) => s.assetData.assetPath).toSet();
 
-    final baseShape = _basePolygons[_random.nextInt(_basePolygons.length)];
-    final spritePath = stoneSpriteAssets.isEmpty
-        ? ''
-        : stoneSpriteAssets[_random.nextInt(stoneSpriteAssets.length)];
-    final imageHint = _imageCollisionHints[spritePath];
-    final hasImageAspect = _imageAspectRatios.containsKey(spritePath);
-    final imageAspectRatio = hasImageAspect
-        ? _imageAspectRatios[spritePath]!
-        : _estimateAspectFromBaseShape(baseShape);
-    final densityMultiplier = _imageDensityMultipliers[spritePath] ?? 1.0;
-    final fallbackColor = _fallbackColors[_random.nextInt(_fallbackColors.length)];
-    // 초기 횡속도를 줄여 가벼운 "튀어나감" 느낌을 완화.
-    final launchVelocity = Vector2((_random.nextDouble() - 0.5) * 0.35, 0.0);
-    final sizeScale = (2.05 + _random.nextDouble() * 0.35) * 4.0;
-    if (_aspectLogEnabled) {
-      debugPrint(
-        '[ASPECT][SPAWN] sprite="$spritePath" hasImageAspect=$hasImageAspect '
-        'aspectUsed=${imageAspectRatio.toStringAsFixed(4)} '
-        'sizeScale=${sizeScale.toStringAsFixed(4)} '
-        'densityMultiplier=${densityMultiplier.toStringAsFixed(3)} '
-        'hintPoints=${imageHint?.length ?? 0}',
-      );
+    // 2. 후보군 계산: 전체 풀 - (화면 상의 에셋 + 이번 사이클 사용 기록)
+    var candidates = stoneSpriteAssets.where((path) => 
+      !currentlyOnScreen.contains(path) && !_spawnHistory.contains(path)
+    ).toList();
+
+    // 3. 후보군이 비어있다면 사이클 리셋 (사용 기록 초기화)
+    if (candidates.isEmpty) {
+      _spawnHistory.clear();
+      candidates = stoneSpriteAssets.where((path) => 
+        !currentlyOnScreen.contains(path)
+      ).toList();
     }
 
-    late final FallingPolygonComponent stone;
-    stone = FallingPolygonComponent(
+    // 4. 리셋 후에도 비어있다면(모든 에셋이 화면에 있는 경우) 전체에서 무작위 선택
+    if (candidates.isEmpty) {
+      candidates = List.from(stoneSpriteAssets);
+    }
+
+    final selectedPath = candidates[_random.nextInt(candidates.length)];
+    _spawnHistory.add(selectedPath);
+
+    // 5. 선택된 에셋의 메타데이터 실시간 로드 및 캐싱 (Lazy Loading)
+    if (!_stoneAssetMetadata.containsKey(selectedPath)) {
+      final metadata = await _pngProcessor.prepareAssets([selectedPath]);
+      if (metadata.containsKey(selectedPath)) {
+        _stoneAssetMetadata[selectedPath] = metadata[selectedPath]!;
+      }
+    }
+
+    final metadata = _stoneAssetMetadata[selectedPath] ?? StoneAssetData(
+      assetPath: selectedPath,
+      type: StoneAssetType.png,
+      aspectRatio: 1.0,
+      densityMultiplier: 1.0,
+    );
+
+    // 6. 스폰 위치 최적화 (가장 빈 라인 찾기)
+    final lanes = <double>[0.20, 0.34, 0.50, 0.66, 0.80]..shuffle(_random);
+    final spawnY = 1.0 + seedOffset;
+    double bestX = worldSize.x * lanes.first;
+    double maxMinDistance = -1.0;
+
+    for (final lane in lanes) {
+      final candidateX = worldSize.x * lane + (_random.nextDouble() - 0.5) * 0.9;
+      final candidatePos = Vector2(candidateX, spawnY);
+      double minDistance = double.infinity;
+      for (final stone in _activeStones) {
+        if (!stone.isMounted) continue;
+        final dist = stone.body.position.distanceTo(candidatePos);
+        if (dist < minDistance) minDistance = dist;
+      }
+      if (minDistance > 8.0) {
+        bestX = candidateX;
+        break;
+      }
+      if (minDistance > maxMinDistance) {
+        maxMinDistance = minDistance;
+        bestX = candidateX;
+      }
+    }
+
+    final x = bestX;
+    final angle = (_random.nextDouble() - 0.5) * (math.pi / 18);
+    final baseShape = _basePolygons[_random.nextInt(_basePolygons.length)];
+    final fallbackColor = _fallbackColors[_random.nextInt(_fallbackColors.length)];
+    final launchVelocity = Vector2((_random.nextDouble() - 0.5) * 0.35, 0.0);
+    final sizeScale = (2.05 + _random.nextDouble() * 0.35) * 4.0;
+
+    final stone = FallingPolygonComponent(
       vertices: baseShape,
       fallbackColor: fallbackColor,
-      imageAssetPath: spritePath,
-      imageAspectRatio: imageAspectRatio,
-      initialPosition: Vector2(x, y),
+      assetData: metadata,
+      initialPosition: Vector2(x, spawnY),
       initialAngle: angle,
       initialLinearVelocity: launchVelocity,
       sizeScale: sizeScale,
-      densityMultiplier: densityMultiplier,
       strategy: enableImageCollisionHints
           ? CollisionShapeStrategy.autoFromImage
           : CollisionShapeStrategy.circleCompound,
-      imageCollisionHint: imageHint,
       maxFixturesPerBody: 4,
-      debugDrawFixtures: debugDrawCollisionShapes,
+      debugDrawFixtures: _debugDrawCollisionShapes,
       enableContinuousCollision: true,
       onRemoved: () {
-        _activeStones.remove(stone);
+        _activeStones.removeWhere((s) => !s.isMounted);
         _scheduleActiveStoneCountSync();
       },
     );
@@ -281,7 +305,6 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     world.add(stone);
   }
 
-  /// 프레임 경계에서 활성 돌 개수 갱신을 예약합니다.
   void _scheduleActiveStoneCountSync() {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       final refreshed = _activeStones.length;
@@ -291,7 +314,6 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     });
   }
 
-  /// 실제 월드 자식 상태와 활성 돌 개수를 동기화합니다.
   void _syncActiveStoneCountFromWorld() {
     final count = world.children
         .whereType<FallingPolygonComponent>()
@@ -309,12 +331,8 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     });
   }
 
-  /// 준비 조건이 모두 갖춰지면 경계와 초기 돌을 생성합니다.
   void _tryInitializeWorld() {
-    if (_worldBuilt) return;
-    if (!_assetsPrepared) return;
-    if (_worldSize == null) return;
-
+    if (_worldBuilt || !_assetsPrepared || _worldSize == null) return;
     world.add(BoundaryComponent(worldSize: _worldSize!));
     for (var i = 0; i < initialSpawnCount; i++) {
       _spawnStone(seedOffset: i.toDouble());
@@ -322,276 +340,39 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     _worldBuilt = true;
   }
 
-  /// 이미지별 종횡비와 선택적 충돌 힌트를 미리 계산합니다.
+  // 이제 실시간 분석을 하므로 초기 분석 로직은 사용하지 않거나 최소화할 수 있습니다.
   Future<void> _prepareImageCollisionHints() async {
-    _imageCollisionHints.clear();
-    _imageAspectRatios.clear();
-    _imageDensityMultipliers.clear();
-    final rawMassByAsset = <String, double>{};
-    for (final assetPath in stoneSpriteAssets) {
-      try {
-        final bytes = (await rootBundle.load(assetPath)).buffer.asUint8List();
-        final decoded = img.decodeImage(bytes);
-        if (decoded == null) continue;
-        final aspect = decoded.width / decoded.height;
-        final pixelArea = (decoded.width * decoded.height).toDouble();
-        rawMassByAsset[assetPath] = pixelArea;
-        _imageAspectRatios[assetPath] = aspect;
-        if (_aspectLogEnabled) {
-          debugPrint(
-            '[ASPECT][IMAGE] asset="$assetPath" width=${decoded.width} '
-            'height=${decoded.height} area=${pixelArea.toStringAsFixed(0)} '
-            'aspect=${aspect.toStringAsFixed(4)}',
-          );
-        }
-        final hint = _buildCollisionHintFromDecoded(decoded);
-        if (hint != null && hint.length >= 3) {
-          _imageCollisionHints[assetPath] = hint;
-          if (_aspectLogEnabled) {
-            debugPrint(
-              '[ASPECT][HINT] asset="$assetPath" hintVertices=${hint.length}',
-            );
-          }
-        }
-      } catch (_) {}
-    }
-
-    if (rawMassByAsset.isEmpty) return;
-    final meanArea =
-        rawMassByAsset.values.reduce((a, b) => a + b) / rawMassByAsset.length;
-    for (final entry in rawMassByAsset.entries) {
-      final normalized = (entry.value / meanArea).clamp(0.5, 2.6);
-      // 차이를 더 분명하게 보이게 비선형으로 스케일하고,
-      // 범위를 제한해 게임성이 깨지지 않도록 제어합니다.
-      final emphasized = math.pow(normalized, 1.25).toDouble();
-      final densityMultiplier = emphasized.clamp(0.75, 1.9);
-      _imageDensityMultipliers[entry.key] = densityMultiplier;
-      if (_aspectLogEnabled) {
-        debugPrint(
-          '[MASS][IMAGE] asset="${entry.key}" '
-          'area=${entry.value.toStringAsFixed(0)} '
-          'normalized=${normalized.toStringAsFixed(3)} '
-          'densityMultiplier=${densityMultiplier.toStringAsFixed(3)}',
-        );
-      }
-    }
+    // 아무것도 하지 않음 (Lazy Loading으로 대체됨)
   }
 
-  /// 이미지 알파 픽셀에서 정규화된 볼록 껍질 형태 힌트를 추출합니다.
-  List<Vector2>? _buildCollisionHintFromDecoded(img.Image decoded) {
-    final opaque = <Vector2>[];
-    for (var y = 0; y < decoded.height; y += 2) {
-      for (var x = 0; x < decoded.width; x += 2) {
-        final p = decoded.getPixel(x, y);
-        if (p.a.toInt() > 20) {
-          opaque.add(Vector2(x.toDouble(), y.toDouble()));
-        }
-      }
-    }
-    if (opaque.length < 12) return null;
-
-    final center = _centroid(opaque);
-    final support = <Vector2>[];
-    const supportCount = 8;
-    for (var i = 0; i < supportCount; i++) {
-      final angle = i * (2 * math.pi / supportCount);
-      final dir = Vector2(math.cos(angle), math.sin(angle));
-      var best = opaque.first;
-      var bestDot = (best - center).dot(dir);
-      for (var j = 1; j < opaque.length; j++) {
-        final candidate = opaque[j];
-        final dot = (candidate - center).dot(dir);
-        if (dot > bestDot) {
-          bestDot = dot;
-          best = candidate;
-        }
-      }
-      support.add(best);
-    }
-
-    final hull = _convexHull(_dedup(support));
-    if (hull.length < 3) return null;
-
-    var minX = double.infinity;
-    var maxX = -double.infinity;
-    var minY = double.infinity;
-    var maxY = -double.infinity;
-    for (final point in hull) {
-      if (point.x < minX) minX = point.x;
-      if (point.x > maxX) maxX = point.x;
-      if (point.y < minY) minY = point.y;
-      if (point.y > maxY) maxY = point.y;
-    }
-    final halfW = ((maxX - minX) * 0.5).clamp(1.0, double.infinity);
-    final halfH = ((maxY - minY) * 0.5).clamp(1.0, double.infinity);
-    final centerX = (minX + maxX) * 0.5;
-    final centerY = (minY + maxY) * 0.5;
-    if (_aspectLogEnabled) {
-      final hullW = (maxX - minX).abs();
-      final hullH = (maxY - minY).abs();
-      final hullAspect = hullH <= 1e-6 ? 1.0 : (hullW / hullH);
-      debugPrint(
-        '[ASPECT][HINT_BOUNDS] hullW=${hullW.toStringAsFixed(2)} '
-        'hullH=${hullH.toStringAsFixed(2)} hullAspect=${hullAspect.toStringAsFixed(4)}',
-      );
-    }
-
-    return hull
-        .map(
-          (p) => Vector2(
-            (p.x - centerX) / halfW,
-            (p.y - centerY) / halfH,
-          ),
-        )
-        .toList(growable: false);
-  }
-
-  /// 기본 폴리곤 경계로부터 fallback 종횡비를 계산합니다.
-  double _estimateAspectFromBaseShape(List<Vector2> points) {
-    var minX = double.infinity;
-    var maxX = -double.infinity;
-    var minY = double.infinity;
-    var maxY = -double.infinity;
+  static double _estimateAspectFromBaseShape(List<Vector2> points) {
+    var minX = double.infinity, maxX = -double.infinity, minY = double.infinity, maxY = -double.infinity;
     for (final point in points) {
-      if (point.x < minX) minX = point.x;
-      if (point.x > maxX) maxX = point.x;
-      if (point.y < minY) minY = point.y;
-      if (point.y > maxY) maxY = point.y;
+      if (point.x < minX) minX = point.x; if (point.x > maxX) maxX = point.x;
+      if (point.y < minY) minY = point.y; if (point.y > maxY) maxY = point.y;
     }
-    final w = (maxX - minX).abs().clamp(0.1, double.infinity);
-    final h = (maxY - minY).abs().clamp(0.1, double.infinity);
-    final aspect = w / h;
-    if (_aspectLogEnabled) {
-      debugPrint(
-        '[ASPECT][BASE_FALLBACK] width=${w.toStringAsFixed(4)} '
-        'height=${h.toStringAsFixed(4)} aspect=${aspect.toStringAsFixed(4)}',
-      );
-    }
-    return aspect;
+    return (maxX - minX).abs().clamp(0.1, double.infinity) / (maxY - minY).abs().clamp(0.1, double.infinity);
   }
 
-  /// 유틸: 점 집합의 중심점을 계산합니다.
-  Vector2 _centroid(List<Vector2> points) {
-    var x = 0.0;
-    var y = 0.0;
-    for (final p in points) {
-      x += p.x;
-      y += p.y;
-    }
-    return Vector2(x / points.length, y / points.length);
-  }
-
-  /// 유틸: 거의 중복되는 점을 제거합니다.
-  List<Vector2> _dedup(List<Vector2> points) {
-    final out = <Vector2>[];
-    for (final p in points) {
-      if (out.any((q) => q.distanceToSquared(p) < 0.01)) continue;
-      out.add(Vector2.copy(p));
-    }
-    return out;
-  }
-
-  /// 유틸: 단조 체인 방식으로 볼록 껍질을 계산합니다.
-  List<Vector2> _convexHull(List<Vector2> points) {
-    if (points.length <= 2) return points;
-    final sorted = points.map(Vector2.copy).toList(growable: true)
-      ..sort((a, b) {
-        final cx = a.x.compareTo(b.x);
-        if (cx != 0) return cx;
-        return a.y.compareTo(b.y);
-      });
-
-    double cross(Vector2 o, Vector2 a, Vector2 b) {
-      return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-    }
-
-    final lower = <Vector2>[];
-    for (final p in sorted) {
-      while (lower.length >= 2 &&
-          cross(lower[lower.length - 2], lower.last, p) <= 0) {
-        lower.removeLast();
-      }
-      lower.add(p);
-    }
-
-    final upper = <Vector2>[];
-    for (var i = sorted.length - 1; i >= 0; i--) {
-      final p = sorted[i];
-      while (upper.length >= 2 &&
-          cross(upper[upper.length - 2], upper.last, p) <= 0) {
-        upper.removeLast();
-      }
-      upper.add(p);
-    }
-
-    lower.removeLast();
-    upper.removeLast();
-    return [...lower, ...upper];
-  }
-
-  /// 패딩된 월드 영역 밖으로 나간 돌을 제거합니다.
   void _despawnOutOfBoundsStones() {
     if (_worldSize == null) return;
-    final maxY = _worldSize!.y + despawnMargin;
-    final minX = -despawnMargin;
-    final maxX = _worldSize!.x + despawnMargin;
-
+    final maxY = _worldSize!.y + despawnMargin, minX = -despawnMargin, maxX = _worldSize!.x + despawnMargin;
     for (final stone in List<FallingPolygonComponent>.from(_activeStones)) {
-      if (!stone.isMounted) {
-        _activeStones.remove(stone);
-        continue;
-      }
+      if (!stone.isMounted) { _activeStones.remove(stone); continue; }
       final p = stone.body.position;
-      final out = p.y > maxY || p.x < minX || p.x > maxX;
-      if (out) {
-        stone.removeFromParent();
-      }
+      if (p.y > maxY || p.x < minX || p.x > maxX) stone.removeFromParent();
     }
   }
 
-  /// 스프라이트가 없을 때 사용하는 대체 렌더 색상입니다.
   static const List<Color> _fallbackColors = <Color>[
-    Color(0xFF7AA2FF),
-    Color(0xFFFF8A65),
-    Color(0xFF81C784),
-    Color(0xFFFFD54F),
-    Color(0xFFBA68C8),
+    Color(0xFF7AA2FF), Color(0xFFFF8A65), Color(0xFF81C784), Color(0xFFFFD54F), Color(0xFFBA68C8),
   ];
 
-  /// 도형 템플릿으로 쓰는 기본 정규화 폴리곤 목록입니다.
   static final List<List<Vector2>> _basePolygons = <List<Vector2>>[
-    [
-      Vector2(-0.9, -0.5),
-      Vector2(0.9, -0.5),
-      Vector2(0.9, 0.5),
-      Vector2(-0.9, 0.5),
-    ],
-    [
-      Vector2(-0.8, -0.6),
-      Vector2(0.8, -0.6),
-      Vector2(1.0, 0.15),
-      Vector2(0.0, 0.85),
-      Vector2(-1.0, 0.15),
-    ],
-    [
-      Vector2(-0.7, -0.55),
-      Vector2(0.7, -0.55),
-      Vector2(0.95, 0.0),
-      Vector2(0.55, 0.65),
-      Vector2(-0.55, 0.65),
-      Vector2(-0.95, 0.0),
-    ],
-    [
-      Vector2(-1.0, -0.45),
-      Vector2(0.8, -0.55),
-      Vector2(1.0, 0.45),
-      Vector2(-0.6, 0.65),
-    ],
-    [
-      Vector2(-0.85, -0.55),
-      Vector2(0.85, -0.55),
-      Vector2(0.75, 0.55),
-      Vector2(-0.75, 0.55),
-    ],
+    [Vector2(-0.9, -0.5), Vector2(0.9, -0.5), Vector2(0.9, 0.5), Vector2(-0.9, 0.5)],
+    [Vector2(-0.8, -0.6), Vector2(0.8, -0.6), Vector2(1.0, 0.15), Vector2(0.0, 0.85), Vector2(-1.0, 0.15)],
+    [Vector2(-0.7, -0.55), Vector2(0.7, -0.55), Vector2(0.95, 0.0), Vector2(0.55, 0.65), Vector2(-0.55, 0.65), Vector2(-0.95, 0.0)],
+    [Vector2(-1.0, -0.45), Vector2(0.8, -0.55), Vector2(1.0, 0.45), Vector2(-0.6, 0.65)],
+    [Vector2(-0.85, -0.55), Vector2(0.85, -0.55), Vector2(0.75, 0.55), Vector2(-0.75, 0.55)],
   ];
 }
