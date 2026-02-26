@@ -161,11 +161,13 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
           .map((stone) => stone.body),
       tuning: const DragTuning(
         pickRadius: 3.2,
-        maxForcePerMass: 600,
+        maxForcePerMass: 1500,
         frequencyHz: 5.0,
         dampingRatio: 0.9,
         velocityGain: 12.0,
         angularDampingGain: 0.4,
+        compressionSuppressionPerStone: 0.45,
+        maxCompressionSuppression: 0.10,
       ),
     );
     await _dragController.initialize();
