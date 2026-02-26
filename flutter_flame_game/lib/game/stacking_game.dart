@@ -110,10 +110,12 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   static const double spawnInterval = 1.05;
   static const int initialSpawnCount = 5;
   static const bool autoSpawnEnabled = false;
+  static const double _initialBottomFocusLockDuration = 4.0;
 
   bool _worldBuilt = false;
   bool _assetsPrepared = false;
   double _spawnAccumulator = 0.0;
+  double _initialBottomFocusLockRemaining = 0.0;
   Vector2? _worldSize;
   late final DragController _dragController;
 
@@ -128,6 +130,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   // 카메라 설정 비율
   static const double _focusLineRatio = 1 / 3; // 최상단 돌을 화면의 상단 1/3 지점에 배치
   static const double _pushThresholdRatio = 2 / 3; // 돌이 화면의 2/3를 차지하면 카메라 이동 준비
+  static const double _topScrollHideMargin = 1.0;
   static const bool _cameraDebugLogEnabled = true;
 
   bool get debugDrawCollisionShapes => _debugDrawCollisionShapes;
@@ -163,9 +166,9 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     super.onGameResize(size);
     if (_worldBuilt || size.x <= 0 || size.y <= 0) return;
     camera.viewfinder.anchor = Anchor.topLeft;
-    camera.moveTo(Vector2.zero());
     final zoom = camera.viewfinder.zoom;
     _worldSize = Vector2(size.x / zoom, size.y / zoom);
+    camera.moveTo(Vector2(0.0, _cameraBottomLimitY()));
     _globalTopY = _worldSize!.y - BoundaryComponent.floorMarginFromBottom;
     _historicalHighestTopY = _globalTopY;
     _tryInitializeWorld();
@@ -173,6 +176,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
 
   @override
   void onPanStart(DragStartInfo info) {
+    _initialBottomFocusLockRemaining = 0.0;
     _autoPushCooldown = _manualControlLockDuration;
     _logCameraDebug(
       'pan-start pos=${info.eventPosition.widget}, cooldown=${_autoPushCooldown.toStringAsFixed(2)}',
@@ -196,6 +200,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
 
   @override
   void onScroll(PointerScrollInfo info) {
+    _initialBottomFocusLockRemaining = 0.0;
     _autoPushCooldown = _manualControlLockDuration;
     _logCameraDebug(
       'scroll-detected delta=${info.scrollDelta.global}, pos=${info.eventPosition.widget}, dragging=${_dragController.isDragging}',
@@ -231,6 +236,10 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     if (!_worldBuilt || _worldSize == null) return;
     if (camera.viewfinder.position.x != 0.0) {
       camera.viewfinder.position = Vector2(0.0, camera.viewfinder.position.y);
+    }
+    if (_initialBottomFocusLockRemaining > 0) {
+      _initialBottomFocusLockRemaining -= dt;
+      camera.viewfinder.position = Vector2(0.0, _cameraBottomLimitY());
     }
 
     if (_autoPushCooldown > 0) {
@@ -269,9 +278,9 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
       final targetY = _globalTopY - (_worldSize!.y * _focusLineRatio);
       final safeTargetY = math.min(targetY, _cameraBottomLimitY());
       
-      // [중요] 자동 이동은 오직 '위쪽(Y값이 작아지는 방향)'으로만 허용합니다.
-      if (safeTargetY < currentCamY) {
-        final nextY = currentCamY + (safeTargetY - currentCamY) * 2.0 * dt;
+      final deltaToTarget = safeTargetY - currentCamY;
+      if (deltaToTarget.abs() > 0.01) {
+        final nextY = currentCamY + deltaToTarget * 2.0 * dt;
         camera.viewfinder.position = Vector2(camera.viewfinder.position.x, nextY);
       }
     }
@@ -463,6 +472,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   void _tryInitializeWorld() {
     if (_worldBuilt || !_assetsPrepared || _worldSize == null) return;
     world.add(BoundaryComponent(worldSize: _worldSize!));
+    _initialBottomFocusLockRemaining = _initialBottomFocusLockDuration;
     for (var i = 0; i < initialSpawnCount; i++) {
       _spawnStone(seedOffset: i.toDouble());
     }
@@ -512,8 +522,8 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     const newX = 0.0;
     var newY = beforeY - delta.y / zoom;
 
-    // 상단 제한은 실시간 globalTop이 아니라 역대 최고 높이를 기준으로 고정해 흔들림을 방지합니다.
-    final upperPanLimit = _historicalHighestTopY - _worldSize!.y - 50.0;
+    // 최대 상단 스크롤: 최고 정착 돌이 화면에서 막 사라지는 지점까지만 허용합니다.
+    final upperPanLimit = _historicalHighestTopY - _worldSize!.y - _topScrollHideMargin;
     final lowerPanLimit = _cameraBottomLimitY();
     newY = newY.clamp(upperPanLimit, lowerPanLimit);
 

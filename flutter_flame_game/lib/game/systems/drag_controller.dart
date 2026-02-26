@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flame_forge2d/flame_forge2d.dart';
 
 /// 마우스 조인트 기반 드래그 튜닝값입니다.
@@ -9,6 +11,12 @@ class DragTuning {
     this.dampingRatio = 0.96,
     this.velocityGain = 18.0,
     this.angularDampingGain = 0.6,
+    this.upwardVelocityMultiplier = 2.8,
+    this.downwardVelocityMultiplier = 0.35,
+    this.maxUpwardVelocity = 60.0,
+    this.maxDownwardVelocity = 7.0,
+    this.compressionSuppressionPerStone = 0.55,
+    this.maxCompressionSuppression = 0.15,
   });
 
   final double pickRadius;
@@ -17,6 +25,12 @@ class DragTuning {
   final double dampingRatio;
   final double velocityGain;
   final double angularDampingGain;
+  final double upwardVelocityMultiplier;
+  final double downwardVelocityMultiplier;
+  final double maxUpwardVelocity;
+  final double maxDownwardVelocity;
+  final double compressionSuppressionPerStone;
+  final double maxCompressionSuppression;
 }
 
 /// 포인터 입력을 Forge2D 드래그 동작으로 변환합니다.
@@ -106,10 +120,48 @@ class DragController {
   /// 드래그 중 프레임마다 속도/회전을 안정화합니다.
   void tick() {
     if (_draggedBody == null || _dragTarget == null) return;
-    final toTarget = _dragTarget! - _draggedBody!.position;
-    _draggedBody!.linearVelocity = toTarget * tuning.velocityGain;
-    _draggedBody!.angularVelocity *= tuning.angularDampingGain;
-    _draggedBody!.setAwake(true);
+    final body = _draggedBody!;
+    final toTarget = _dragTarget! - body.position;
+    final rawVelocity = toTarget * tuning.velocityGain;
+    final aboveContactCount = _countCompressingBodiesAbove(body);
+
+    // Forge2D 좌표계에서 +Y는 아래 방향입니다.
+    var vy = rawVelocity.y;
+    if (vy < 0) {
+      final suppressionFactor = math.max(
+        tuning.maxCompressionSuppression,
+        math.pow(tuning.compressionSuppressionPerStone, aboveContactCount).toDouble(),
+      );
+      final upwardMultiplier = aboveContactCount > 0
+          ? tuning.downwardVelocityMultiplier * suppressionFactor
+          : tuning.upwardVelocityMultiplier;
+      final upwardMaxVelocity = aboveContactCount > 0
+          ? tuning.maxDownwardVelocity * suppressionFactor
+          : tuning.maxUpwardVelocity;
+      vy *= upwardMultiplier;
+      vy = vy.clamp(-upwardMaxVelocity, 0.0);
+    } else {
+      vy *= tuning.downwardVelocityMultiplier;
+      vy = vy.clamp(0.0, tuning.maxDownwardVelocity);
+    }
+
+    body.linearVelocity = Vector2(rawVelocity.x, vy);
+    body.angularVelocity *= tuning.angularDampingGain;
+    body.setAwake(true);
+  }
+
+  int _countCompressingBodiesAbove(Body body) {
+    var count = 0;
+    for (final contact in body.contacts) {
+      if (!contact.isTouching()) continue;
+      final other =
+          contact.fixtureA.body == body ? contact.fixtureB.body : contact.fixtureA.body;
+      if (other.bodyType != BodyType.dynamic) continue;
+      if (other.position.y < body.position.y - 0.15) {
+        count++;
+      }
+    }
+    return count;
   }
 
   /// 현재 마우스 조인트가 있으면 안전하게 제거합니다.
