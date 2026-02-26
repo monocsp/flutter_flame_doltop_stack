@@ -551,7 +551,8 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
 
   void _tryInitializeWorld() {
     if (_worldBuilt || !_assetsPrepared || _worldSize == null) return;
-    final floorY = _worldSize!.y - BoundaryComponent.floorMarginFromBottom;
+    final backgroundBottomY =
+        _worldSize!.y - BoundaryComponent.floorBaseMarginFromBottom;
     world.add(
       LoopingBackgroundComponent(
         assetPathsInOrder: const <String>[
@@ -562,8 +563,9 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
           'assets/background/5.png',
           'assets/background/6.png',
         ],
-        baseBottomY: floorY,
+        baseBottomY: backgroundBottomY,
         worldWidth: _worldSize!.x,
+        bottomOverlayAssetPath: 'assets/background/base.png',
         priority: -1000,
       ),
     );
@@ -679,7 +681,9 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
 
   double _cameraBottomLimitY() {
     if (_worldSize == null) return 0.0;
-    final floorY = _worldSize!.y - BoundaryComponent.floorMarginFromBottom;
+    // 카메라 하한은 "기본 마진" 기준으로 유지해,
+    // floorSafetyMarginFromBottom 값이 화면상 하단 안전 여백으로 보이게 합니다.
+    final floorY = _worldSize!.y - BoundaryComponent.floorBaseMarginFromBottom;
     return floorY - _worldSize!.y;
   }
 
