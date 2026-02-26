@@ -63,21 +63,16 @@ class _FlameScreenState extends State<FlameScreen> {
     _prepareGame();
   }
 
-  /// 돌 에셋 일부를 무작위로 로드한 뒤 게임 인스턴스를 생성합니다.
-  ///
-  /// 비동기 준비/오류 처리는 Flutter에서 담당하고,
-  /// Flame 쪽은 게임 플레이에 집중하도록 분리합니다.
+  /// 돌 에셋 전체 목록을 준비합니다.
+  /// 이제 제한된 개수가 아닌 사용 가능한 모든 돌 에셋을 수집합니다.
   Future<void> _prepareGame() async {
     try {
-      final selectedAssets = await _pickRandomUnstructuredStoneAssets(count: 5);
-      for (final asset in selectedAssets) {
-        await rootBundle.load(asset);
-      }
+      final allAssets = await _collectAllStoneAssets();
 
       if (!mounted) return;
       setState(() {
         _game = StackingGame(
-          stoneSpriteAssets: selectedAssets,
+          stoneSpriteAssets: allAssets,
           enableImageCollisionHints: true,
           debugDrawCollisionShapes: _debugEnabled,
         );
@@ -85,32 +80,28 @@ class _FlameScreenState extends State<FlameScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = '이미지 로딩 실패: $e';
+        _errorMessage = '이미지 목록 로딩 실패: $e';
       });
     }
   }
 
-  /// `AssetManifest`에서 비정형 돌 PNG를 무작위로 선택합니다.
-  Future<List<String>> _pickRandomUnstructuredStoneAssets({
-    required int count,
-  }) async {
+  /// `AssetManifest`에서 모든 'td_?_?_?' 패턴의 돌 에셋을 수집합니다.
+  Future<List<String>> _collectAllStoneAssets() async {
     final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
     final candidates = manifest
         .listAssets()
         .where(
           (path) =>
-              path.startsWith('assets/images/unstructured/') &&
+              (path.contains('assets/images/unstructured/') || 
+               path.contains('assets/images/structured/')) &&
               path.endsWith('.png') &&
-              path.contains('td_1_'),
+              RegExp(r'td_\d+_\d+_\d+').hasMatch(path),
         )
         .toList(growable: true);
-    candidates.sort();
+    
+    // 무작위성을 위해 섞어서 반환합니다.
     candidates.shuffle(math.Random());
-
-    if (candidates.length <= count) {
-      return candidates;
-    }
-    return candidates.take(count).toList(growable: false);
+    return candidates;
   }
 
   @override
@@ -168,7 +159,7 @@ class _FlameScreenState extends State<FlameScreen> {
                     valueListenable: game.activeStoneCount,
                     builder: (_, count, __) {
                       return Text(
-                        'Active: $count',
+                        '돌 개수 : $count',
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w700,
@@ -188,22 +179,6 @@ class _FlameScreenState extends State<FlameScreen> {
                   FilledButton.tonal(
                     onPressed: game.spawnNow,
                     child: const Text('Spawn'),
-                  ),
-                  const SizedBox(height: 8),
-                  FilledButton.tonal(
-                    onPressed: game.resetGame,
-                    child: const Text('Reset'),
-                  ),
-                  const SizedBox(height: 8),
-                  FilledButton.tonal(
-                    onPressed: () {
-                      final next = !_debugEnabled;
-                      setState(() {
-                        _debugEnabled = next;
-                      });
-                      game.setDebugCollisionRendering(next);
-                    },
-                    child: Text(_debugEnabled ? 'Debug: ON' : 'Debug: OFF'),
                   ),
                 ],
               ),
