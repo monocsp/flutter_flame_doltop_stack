@@ -119,6 +119,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   static const double despawnMargin = 15.0;
   static const double spawnInterval = 1.05;
   static const int initialSpawnCount = 5;
+  static const double _initialSpawnInterval = 0.15;
   static const bool autoSpawnEnabled = false;
   static const double _initialBottomFocusLockDuration = 4.0;
 
@@ -126,6 +127,8 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   bool _worldInitializing = false;
   bool _assetsPrepared = false;
   double _spawnAccumulator = 0.0;
+  double _initialSpawnDelayRemaining = 0.0;
+  int _pendingInitialSpawnCount = 0;
   double _initialBottomFocusLockRemaining = 0.0;
   double _timeSinceStart = 0.0;
   double _lastHeightDisturbanceAt = 0.0;
@@ -286,6 +289,14 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     _handleAutoCameraPush(dt);
 
     _spawnAccumulator += dt;
+    if (_pendingInitialSpawnCount > 0) {
+      _initialSpawnDelayRemaining -= dt;
+      while (_pendingInitialSpawnCount > 0 && _initialSpawnDelayRemaining <= 0) {
+        _spawnStone(seedOffset: (initialSpawnCount - _pendingInitialSpawnCount).toDouble());
+        _pendingInitialSpawnCount--;
+        _initialSpawnDelayRemaining += _initialSpawnInterval;
+      }
+    }
     if (autoSpawnEnabled && _spawnAccumulator >= spawnInterval) {
       _spawnAccumulator = 0.0;
       if (_activeStones.length < maxActiveStones) {
@@ -603,9 +614,8 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
       );
       _markHeightDisturbance();
       _initialBottomFocusLockRemaining = _initialBottomFocusLockDuration;
-      for (var i = 0; i < initialSpawnCount; i++) {
-        _spawnStone(seedOffset: i.toDouble());
-      }
+      _pendingInitialSpawnCount = initialSpawnCount;
+      _initialSpawnDelayRemaining = 0.0;
       _worldBuilt = true;
     } finally {
       _worldInitializing = false;
