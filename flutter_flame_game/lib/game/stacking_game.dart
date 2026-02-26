@@ -136,8 +136,8 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   static const double _manualControlLockDuration = 3.0; // 수동 조작 후 3초간 자동 추적 정지
 
   // 카메라 설정 비율
-  static const double _focusLineRatio = 1 / 3; // 최상단 돌을 화면의 상단 1/3 지점에 배치
-  static const double _pushThresholdRatio = 2 / 3; // 돌이 화면의 2/3를 차지하면 카메라 이동 준비
+  static const double _focusLineRatio = 1 / 2; // 최상단 돌을 화면의 상단 1/2 지점에 배치
+  static const double _pushThresholdRatio = 1 / 2; // 돌이 화면의 1/2를 차지하면 카메라 이동 준비
   static const double _topScrollHideMargin = 1.0;
   static const bool _cameraDebugLogEnabled = true;
   static const double _settledVelocityThreshold = 1.5;
