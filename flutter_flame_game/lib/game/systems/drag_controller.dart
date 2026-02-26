@@ -55,6 +55,7 @@ class DragController {
 
   /// 현재 돌을 드래그 중인지 여부를 반환합니다.
   bool get isDragging => _draggedBody != null;
+  bool isBodyBeingDragged(Body body) => identical(_draggedBody, body);
 
   /// `MouseJoint` 생성에 필요한 정적 기준 바디를 만듭니다.
   Future<void> initialize() async {

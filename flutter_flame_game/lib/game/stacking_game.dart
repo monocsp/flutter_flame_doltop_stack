@@ -100,6 +100,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   final List<FallingPolygonComponent> _activeStones = [];
   final Map<String, StoneAssetData> _stoneAssetMetadata = {};
   final ValueNotifier<int> activeStoneCount = ValueNotifier(0);
+  final ValueNotifier<int> towerHeightMeters = ValueNotifier(0);
 
   /// 스폰 중복 방지를 위한 기록 관리
   final Set<String> _spawnHistory = {};
@@ -116,6 +117,9 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   bool _assetsPrepared = false;
   double _spawnAccumulator = 0.0;
   double _initialBottomFocusLockRemaining = 0.0;
+  double _timeSinceStart = 0.0;
+  double _lastHeightDisturbanceAt = 0.0;
+  bool _heightUpdateLocked = true;
   Vector2? _worldSize;
   late final DragController _dragController;
 
@@ -132,6 +136,8 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   static const double _pushThresholdRatio = 2 / 3; // 돌이 화면의 2/3를 차지하면 카메라 이동 준비
   static const double _topScrollHideMargin = 1.0;
   static const bool _cameraDebugLogEnabled = true;
+  static const double _settledVelocityThreshold = 1.5;
+  static const double _heightSettleDelaySeconds = 1.0;
 
   bool get debugDrawCollisionShapes => _debugDrawCollisionShapes;
 
@@ -171,6 +177,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     camera.moveTo(Vector2(0.0, _cameraBottomLimitY()));
     _globalTopY = _worldSize!.y - BoundaryComponent.floorMarginFromBottom;
     _historicalHighestTopY = _globalTopY;
+    _updateTowerHeightMeters();
     _tryInitializeWorld();
   }
 
@@ -231,6 +238,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   @override
   void update(double dt) {
     super.update(dt);
+    _timeSinceStart += dt;
     _dragController.tick();
     _syncActiveStoneCountFromWorld();
     if (!_worldBuilt || _worldSize == null) return;
@@ -247,6 +255,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     }
 
     _updateGlobalTopY();
+    _updateTowerHeightMeters();
     _handleAutoCameraPush(dt);
 
     _spawnAccumulator += dt;
@@ -298,8 +307,9 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     double minY = double.infinity;
     for (final stone in _activeStones) {
       if (!stone.isMounted) continue;
+      if (_dragController.isBodyBeingDragged(stone.body)) continue;
       // 안착된 돌만 높이로 인정 (속도 임계값 1.5)
-      if (stone.body.linearVelocity.length < 1.5) {
+      if (stone.body.linearVelocity.length < _settledVelocityThreshold) {
         final y = stone.body.position.y;
         if (y < minY) minY = y;
       }
@@ -317,6 +327,43 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     }
   }
 
+  void _updateTowerHeightMeters() {
+    if (_worldSize == null) {
+      if (towerHeightMeters.value != 0) {
+        towerHeightMeters.value = 0;
+      }
+      return;
+    }
+    final hasMovingStone = _activeStones.any(
+      (stone) =>
+          stone.isMounted &&
+          !_dragController.isBodyBeingDragged(stone.body) &&
+          stone.body.linearVelocity.length >= _settledVelocityThreshold,
+    );
+    if (hasMovingStone) {
+      _markHeightDisturbance();
+      return;
+    }
+    if (_heightUpdateLocked) {
+      final stableFor = _timeSinceStart - _lastHeightDisturbanceAt;
+      if (stableFor < _heightSettleDelaySeconds) {
+        return;
+      }
+      _heightUpdateLocked = false;
+    }
+
+    final floorY = _worldSize!.y - BoundaryComponent.floorMarginFromBottom;
+    final height = math.max(0.0, floorY - _globalTopY).floor();
+    if (towerHeightMeters.value != height) {
+      towerHeightMeters.value = height;
+    }
+  }
+
+  void _markHeightDisturbance() {
+    _lastHeightDisturbanceAt = _timeSinceStart;
+    _heightUpdateLocked = true;
+  }
+
   void setDebugCollisionRendering(bool enabled) {
     _debugDrawCollisionShapes = enabled;
     for (final stone in _activeStones) {
@@ -325,6 +372,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   }
 
   void spawnNow() {
+    _markHeightDisturbance();
     _spawnStone();
     
     if (_worldSize != null) {
@@ -472,6 +520,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   void _tryInitializeWorld() {
     if (_worldBuilt || !_assetsPrepared || _worldSize == null) return;
     world.add(BoundaryComponent(worldSize: _worldSize!));
+    _markHeightDisturbance();
     _initialBottomFocusLockRemaining = _initialBottomFocusLockDuration;
     for (var i = 0; i < initialSpawnCount; i++) {
       _spawnStone(seedOffset: i.toDouble());

@@ -158,12 +158,30 @@ class _FlameScreenState extends State<FlameScreen> {
                   child: ValueListenableBuilder<int>(
                     valueListenable: game.activeStoneCount,
                     builder: (_, count, __) {
-                      return Text(
-                        '돌 개수 : $count',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '돌 개수 : $count',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          ValueListenableBuilder<int>(
+                            valueListenable: game.towerHeightMeters,
+                            builder: (_, meters, __) {
+                              return _AnimatedMeterText(
+                                meters: meters,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       );
                     },
                   ),
@@ -178,7 +196,7 @@ class _FlameScreenState extends State<FlameScreen> {
                 children: [
                   FilledButton.tonal(
                     onPressed: game.spawnNow,
-                    child: const Text('Spawn'),
+                    child: const Text('추가'),
                   ),
                 ],
               ),
@@ -186,6 +204,55 @@ class _FlameScreenState extends State<FlameScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AnimatedMeterText extends StatefulWidget {
+  const _AnimatedMeterText({
+    required this.meters,
+    required this.style,
+  });
+
+  final int meters;
+  final TextStyle style;
+
+  @override
+  State<_AnimatedMeterText> createState() => _AnimatedMeterTextState();
+}
+
+class _AnimatedMeterTextState extends State<_AnimatedMeterText> {
+  late int _from;
+  late int _to;
+
+  @override
+  void initState() {
+    super.initState();
+    _from = widget.meters;
+    _to = widget.meters;
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimatedMeterText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.meters != _to) {
+      _from = _to;
+      _to = widget.meters;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: _from.toDouble(), end: _to.toDouble()),
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      builder: (_, value, __) {
+        return Text(
+          '높이 : ${value.round()}m',
+          style: widget.style,
+        );
+      },
     );
   }
 }
