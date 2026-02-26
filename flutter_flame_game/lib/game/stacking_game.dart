@@ -24,7 +24,6 @@ enum StoneCategory {
 
 /// 고정 스텝 물리 업데이트를 위한 Forge2D 월드 래퍼입니다.
 class FixedStepForge2DWorld extends Forge2DWorld {
-// ... (중략: FixedStepForge2DWorld 구현은 동일)
   FixedStepForge2DWorld({
     required this.fixedStep,
     required this.maxSubSteps,
@@ -60,7 +59,7 @@ class FixedStepForge2DWorld extends Forge2DWorld {
 }
 
 /// 게임 전체를 조율하는 메인 클래스입니다.
-class StackingGame extends Forge2DGame with ScaleDetector {
+class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   StackingGame({
     required List<String> stoneSpriteAssets,
     this.category = StoneCategory.unstructured, // 기본값은 unstructured
@@ -84,7 +83,6 @@ class StackingGame extends Forge2DGame with ScaleDetector {
   final StoneCategory category;
   final bool enableImageCollisionHints;
   bool _debugDrawCollisionShapes;
-  static const bool _aspectLogEnabled = true;
 
   /// 현재 카테고리 설정에 따라 필터링된 에셋 목록
   List<String> get stoneSpriteAssets {
@@ -99,7 +97,6 @@ class StackingGame extends Forge2DGame with ScaleDetector {
   }
 
   final math.Random _random = math.Random();
-// ... (이하 동일)
   final List<FallingPolygonComponent> _activeStones = [];
   final Map<String, StoneAssetData> _stoneAssetMetadata = {};
   final ValueNotifier<int> activeStoneCount = ValueNotifier(0);
@@ -109,7 +106,7 @@ class StackingGame extends Forge2DGame with ScaleDetector {
   final PngProcessor _pngProcessor = PngProcessor();
 
   static const int maxActiveStones = 36;
-  static const double despawnMargin = 7.0;
+  static const double despawnMargin = 15.0; 
   static const double spawnInterval = 1.05;
   static const int initialSpawnCount = 5;
   static const bool autoSpawnEnabled = false;
@@ -120,6 +117,19 @@ class StackingGame extends Forge2DGame with ScaleDetector {
   Vector2? _worldSize;
   late final DragController _dragController;
 
+  /// 안착된(Settled) 돌 중 가장 높은 위치(최솟값 Y)를 상시 추적합니다.
+  double _globalTopY = 0.0;
+  double _historicalHighestTopY = 0.0;
+  
+  // 수동 조작 추적을 위한 변수
+  double _autoPushCooldown = 0.0;
+  static const double _manualControlLockDuration = 3.0; // 수동 조작 후 3초간 자동 추적 정지
+  
+  // 카메라 설정 비율
+  static const double _focusLineRatio = 1 / 3; // 최상단 돌을 화면의 상단 1/3 지점에 배치
+  static const double _pushThresholdRatio = 2 / 3; // 돌이 화면의 2/3를 차지하면 카메라 이동 준비
+  static const bool _cameraDebugLogEnabled = true;
+
   bool get debugDrawCollisionShapes => _debugDrawCollisionShapes;
 
   @override
@@ -128,7 +138,6 @@ class StackingGame extends Forge2DGame with ScaleDetector {
   @override
   Future<void> onLoad() async {
     await super.onLoad();
-    // 더 이상 시작 시점에 수백 개를 분석하지 않고, 목록만 인지합니다.
     _assetsPrepared = true;
     _dragController = DragController(
       world: world,
@@ -157,23 +166,60 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     camera.moveTo(Vector2.zero());
     final zoom = camera.viewfinder.zoom;
     _worldSize = Vector2(size.x / zoom, size.y / zoom);
+    _globalTopY = _worldSize!.y - BoundaryComponent.floorMarginFromBottom;
+    _historicalHighestTopY = _globalTopY;
     _tryInitializeWorld();
   }
 
   @override
-  void onScaleStart(ScaleStartInfo info) {
-    if (info.pointerCount != 1) return;
+  void onPanStart(DragStartInfo info) {
+    _autoPushCooldown = _manualControlLockDuration;
+    _logCameraDebug(
+      'pan-start pos=${info.eventPosition.widget}, cooldown=${_autoPushCooldown.toStringAsFixed(2)}',
+    );
     _dragController.startDrag(screenToWorld(info.eventPosition.widget));
   }
 
   @override
-  void onScaleUpdate(ScaleUpdateInfo info) {
-    if (info.pointerCount != 1) return;
-    _dragController.updateDrag(screenToWorld(info.eventPosition.widget));
+  void onPanUpdate(DragUpdateInfo info) {
+    _autoPushCooldown = _manualControlLockDuration;
+
+    if (_dragController.isDragging) {
+      _logCameraDebug(
+        'pan-update dragging=true (camera pan skipped), pos=${info.eventPosition.widget}',
+      );
+      _dragController.updateDrag(screenToWorld(info.eventPosition.widget));
+    } else {
+      _applyManualCameraPan(delta: info.delta.global, source: 'pan-update');
+    }
   }
 
   @override
-  void onScaleEnd(ScaleEndInfo info) {
+  void onScroll(PointerScrollInfo info) {
+    _autoPushCooldown = _manualControlLockDuration;
+    _logCameraDebug(
+      'scroll-detected delta=${info.scrollDelta.global}, pos=${info.eventPosition.widget}, dragging=${_dragController.isDragging}',
+    );
+    if (_dragController.isDragging) {
+      _logCameraDebug('scroll-blocked reason=dragging');
+      return;
+    }
+    _applyManualCameraPan(delta: info.scrollDelta.global, source: 'scroll');
+  }
+
+  @override
+  void onPanEnd(DragEndInfo info) {
+    _autoPushCooldown = _manualControlLockDuration;
+    _logCameraDebug(
+      'pan-end velocity=${info.velocity}, cooldown=${_autoPushCooldown.toStringAsFixed(2)}',
+    );
+    _dragController.endDrag();
+  }
+
+  @override
+  void onPanCancel() {
+    _autoPushCooldown = _manualControlLockDuration;
+    _logCameraDebug('pan-cancel cooldown=${_autoPushCooldown.toStringAsFixed(2)}');
     _dragController.endDrag();
   }
 
@@ -183,6 +229,17 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     _dragController.tick();
     _syncActiveStoneCountFromWorld();
     if (!_worldBuilt || _worldSize == null) return;
+    if (camera.viewfinder.position.x != 0.0) {
+      camera.viewfinder.position = Vector2(0.0, camera.viewfinder.position.y);
+    }
+
+    if (_autoPushCooldown > 0) {
+      _autoPushCooldown -= dt;
+    }
+
+    _updateGlobalTopY();
+    _handleAutoCameraPush(dt);
+
     _spawnAccumulator += dt;
     if (autoSpawnEnabled && _spawnAccumulator >= spawnInterval) {
       _spawnAccumulator = 0.0;
@@ -191,6 +248,64 @@ class StackingGame extends Forge2DGame with ScaleDetector {
       }
     }
     _despawnOutOfBoundsStones();
+  }
+
+  /// 최상단 돌 위치에 따라 카메라를 자동으로 밀어올립니다
+  void _handleAutoCameraPush(double dt) {
+    if (_worldSize == null || _autoPushCooldown > 0 || _dragController.isDragging) {
+      _logCameraDebug(
+        'auto-push-skipped cooldown=${_autoPushCooldown.toStringAsFixed(2)}, dragging=${_dragController.isDragging}',
+      );
+      return;
+    }
+    
+    final currentCamY = camera.viewfinder.position.y;
+    final floorY = _worldSize!.y - BoundaryComponent.floorMarginFromBottom;
+    final stackHeight = floorY - _globalTopY;
+    
+    // 돌이 화면 높이의 2/3 이상 쌓였는지 체크
+    if (stackHeight > _worldSize!.y * _pushThresholdRatio) {
+      // 최상단이 화면의 1/3 지점에 오도록 목표 설정
+      final targetY = _globalTopY - (_worldSize!.y * _focusLineRatio);
+      final safeTargetY = math.min(targetY, _cameraBottomLimitY());
+      
+      // [중요] 자동 이동은 오직 '위쪽(Y값이 작아지는 방향)'으로만 허용합니다.
+      if (safeTargetY < currentCamY) {
+        final nextY = currentCamY + (safeTargetY - currentCamY) * 2.0 * dt;
+        camera.viewfinder.position = Vector2(camera.viewfinder.position.x, nextY);
+      }
+    }
+  }
+
+  void _updateGlobalTopY() {
+    if (_activeStones.isEmpty) {
+      if (_worldSize != null) {
+        _globalTopY = _worldSize!.y - BoundaryComponent.floorMarginFromBottom;
+        _historicalHighestTopY = _globalTopY;
+      }
+      return;
+    }
+
+    double minY = double.infinity;
+    for (final stone in _activeStones) {
+      if (!stone.isMounted) continue;
+      // 안착된 돌만 높이로 인정 (속도 임계값 1.5)
+      if (stone.body.linearVelocity.length < 1.5) {
+        final y = stone.body.position.y;
+        if (y < minY) minY = y;
+      }
+    }
+    
+    if (minY == double.infinity) {
+      if (_globalTopY == 0.0 && _worldSize != null) {
+        _globalTopY = _worldSize!.y - BoundaryComponent.floorMarginFromBottom;
+      }
+    } else {
+      _globalTopY = minY;
+      if (_globalTopY < _historicalHighestTopY) {
+        _historicalHighestTopY = _globalTopY;
+      }
+    }
   }
 
   void setDebugCollisionRendering(bool enabled) {
@@ -202,23 +317,36 @@ class StackingGame extends Forge2DGame with ScaleDetector {
 
   void spawnNow() {
     _spawnStone();
+    
+    if (_worldSize != null) {
+      final floorY = _worldSize!.y - BoundaryComponent.floorMarginFromBottom;
+      final stackHeight = floorY - _globalTopY;
+
+      if (stackHeight > _worldSize!.y * _pushThresholdRatio) {
+        _autoPushCooldown = 0.0; 
+        final targetY = _globalTopY - (_worldSize!.y * _focusLineRatio);
+        final safeTargetY = math.min(targetY, _cameraBottomLimitY());
+        final currentCamY = camera.viewfinder.position.y;
+        final relativeTopInView = _globalTopY - currentCamY;
+        final isTopAlreadyVisible = relativeTopInView >= 0.0 && relativeTopInView <= _worldSize!.y * 0.6;
+
+        // 스폰 시점에 이미 최상단이 충분히 보이면 카메라를 강제 이동하지 않습니다.
+        if (!isTopAlreadyVisible && safeTargetY < currentCamY) {
+          camera.moveTo(Vector2(camera.viewfinder.position.x, safeTargetY));
+        }
+      }
+    }
   }
 
-  /// 차집합(Subtraction) 로직을 적용한 새 돌 스폰
   Future<void> _spawnStone({double seedOffset = 0.0}) async {
     if (_worldSize == null || _activeStones.length >= maxActiveStones) return;
 
     final worldSize = _worldSize!;
-    
-    // 1. 현재 화면에 있는 에셋 경로 수집
     final currentlyOnScreen = _activeStones.map((s) => s.assetData.assetPath).toSet();
-
-    // 2. 후보군 계산: 전체 풀 - (화면 상의 에셋 + 이번 사이클 사용 기록)
     var candidates = stoneSpriteAssets.where((path) => 
       !currentlyOnScreen.contains(path) && !_spawnHistory.contains(path)
     ).toList();
 
-    // 3. 후보군이 비어있다면 사이클 리셋 (사용 기록 초기화)
     if (candidates.isEmpty) {
       _spawnHistory.clear();
       candidates = stoneSpriteAssets.where((path) => 
@@ -226,7 +354,6 @@ class StackingGame extends Forge2DGame with ScaleDetector {
       ).toList();
     }
 
-    // 4. 리셋 후에도 비어있다면(모든 에셋이 화면에 있는 경우) 전체에서 무작위 선택
     if (candidates.isEmpty) {
       candidates = List.from(stoneSpriteAssets);
     }
@@ -234,7 +361,6 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     final selectedPath = candidates[_random.nextInt(candidates.length)];
     _spawnHistory.add(selectedPath);
 
-    // 5. 선택된 에셋의 메타데이터 실시간 로드 및 캐싱 (Lazy Loading)
     if (!_stoneAssetMetadata.containsKey(selectedPath)) {
       final metadata = await _pngProcessor.prepareAssets([selectedPath]);
       if (metadata.containsKey(selectedPath)) {
@@ -249,9 +375,12 @@ class StackingGame extends Forge2DGame with ScaleDetector {
       densityMultiplier: 1.0,
     );
 
-    // 6. 스폰 위치 최적화 (가장 빈 라인 찾기)
     final lanes = <double>[0.20, 0.34, 0.50, 0.66, 0.80]..shuffle(_random);
-    final spawnY = 1.0 + seedOffset;
+    
+    // 스폰 높이: 화면 상단 경계보다 위에서 생성되도록 보장
+    final camTopY = camera.viewfinder.position.y;
+    final spawnY = camTopY - 10.0 + seedOffset;
+    
     double bestX = worldSize.x * lanes.first;
     double maxMinDistance = -1.0;
 
@@ -340,11 +469,6 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     _worldBuilt = true;
   }
 
-  // 이제 실시간 분석을 하므로 초기 분석 로직은 사용하지 않거나 최소화할 수 있습니다.
-  Future<void> _prepareImageCollisionHints() async {
-    // 아무것도 하지 않음 (Lazy Loading으로 대체됨)
-  }
-
   static double _estimateAspectFromBaseShape(List<Vector2> points) {
     var minX = double.infinity, maxX = -double.infinity, minY = double.infinity, maxY = -double.infinity;
     for (final point in points) {
@@ -375,4 +499,43 @@ class StackingGame extends Forge2DGame with ScaleDetector {
     [Vector2(-1.0, -0.45), Vector2(0.8, -0.55), Vector2(1.0, 0.45), Vector2(-0.6, 0.65)],
     [Vector2(-0.85, -0.55), Vector2(0.85, -0.55), Vector2(0.75, 0.55), Vector2(-0.75, 0.55)],
   ];
+
+  void _applyManualCameraPan({
+    required Vector2 delta,
+    required String source,
+  }) {
+    if (_worldSize == null) return;
+    final beforeX = camera.viewfinder.position.x;
+    final beforeY = camera.viewfinder.position.y;
+    final zoom = camera.viewfinder.zoom;
+
+    const newX = 0.0;
+    var newY = beforeY - delta.y / zoom;
+
+    // 상단 제한은 실시간 globalTop이 아니라 역대 최고 높이를 기준으로 고정해 흔들림을 방지합니다.
+    final upperPanLimit = _historicalHighestTopY - _worldSize!.y - 50.0;
+    final lowerPanLimit = _cameraBottomLimitY();
+    newY = newY.clamp(upperPanLimit, lowerPanLimit);
+
+    camera.viewfinder.position = Vector2(newX, newY);
+
+    final afterX = camera.viewfinder.position.x;
+    final afterY = camera.viewfinder.position.y;
+    final moved = (afterX - beforeX).abs() > 1e-6 || (afterY - beforeY).abs() > 1e-6;
+
+    _logCameraDebug(
+      '$source manual-pan moved=$moved delta=$delta camBefore=(${beforeX.toStringAsFixed(2)}, ${beforeY.toStringAsFixed(2)}) camAfter=(${afterX.toStringAsFixed(2)}, ${afterY.toStringAsFixed(2)}) yClamp=[${upperPanLimit.toStringAsFixed(2)}, ${lowerPanLimit.toStringAsFixed(2)}] topY=${_globalTopY.toStringAsFixed(2)} peakTopY=${_historicalHighestTopY.toStringAsFixed(2)}',
+    );
+  }
+
+  double _cameraBottomLimitY() {
+    if (_worldSize == null) return 0.0;
+    final floorY = _worldSize!.y - BoundaryComponent.floorMarginFromBottom;
+    return floorY - _worldSize!.y;
+  }
+
+  void _logCameraDebug(String message) {
+    if (!kDebugMode || !_cameraDebugLogEnabled) return;
+    debugPrint('[StackCam] $message');
+  }
 }

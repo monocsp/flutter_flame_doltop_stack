@@ -39,6 +39,9 @@ class DragController {
   Body? _draggedBody;
   Vector2? _dragTarget;
 
+  /// 현재 돌을 드래그 중인지 여부를 반환합니다.
+  bool get isDragging => _draggedBody != null;
+
   /// `MouseJoint` 생성에 필요한 정적 기준 바디를 만듭니다.
   Future<void> initialize() async {
     _groundBody = world.createBody(BodyDef()..type = BodyType.static);
@@ -50,14 +53,12 @@ class DragController {
 
     Body? selectedBody;
     var bestDistance = double.infinity;
-    final pickRadiusSquared = tuning.pickRadius * tuning.pickRadius;
-
     for (final body in bodyCandidates()) {
       if (body.bodyType != BodyType.dynamic) continue;
 
       final distance = body.position.distanceToSquared(worldPoint);
       final touched = body.fixtures.any((fixture) => fixture.testPoint(worldPoint));
-      if (!touched && distance > pickRadiusSquared) continue;
+      if (!touched) continue;
 
       if (distance < bestDistance) {
         bestDistance = distance;

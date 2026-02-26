@@ -24,19 +24,23 @@ class BoundaryComponent extends BodyComponent {
     body.userData = this;
     final floorCenterY = worldSize.y - floorMarginFromBottom - thickness / 2;
 
+    // 벽의 높이를 위쪽으로 매우 크게 확장하여 무한 스택을 지원합니다.
+    const wallHeight = 20000.0; 
+    final wallCenterY = floorCenterY - wallHeight / 2;
+
     final leftWall = PolygonShape()
       ..setAsBox(
         thickness / 2,
-        floorCenterY / 2,
-        Vector2(thickness / 2, floorCenterY / 2),
+        wallHeight / 2,
+        Vector2(thickness / 2, wallCenterY),
         0,
       );
 
     final rightWall = PolygonShape()
       ..setAsBox(
         thickness / 2,
-        floorCenterY / 2,
-        Vector2(worldSize.x - thickness / 2, floorCenterY / 2),
+        wallHeight / 2,
+        Vector2(worldSize.x - thickness / 2, wallCenterY),
         0,
       );
 
@@ -59,16 +63,25 @@ class BoundaryComponent extends BodyComponent {
   @override
   void render(Canvas canvas) {
     final floorTopY = worldSize.y - floorMarginFromBottom - thickness;
-    final wallHeight = floorTopY + thickness;
+    // 벽의 시각적 높이를 물리적 높이와 일치시키거나 충분히 크게 설정합니다.
+    const wallVisualHeight = 20000.0;
+    final wallTopY = floorTopY - wallVisualHeight;
+    
     final paint = Paint()
       ..color = const Color(0xFF1A1A1A)
       ..style = PaintingStyle.fill;
 
-    canvas.drawRect(Rect.fromLTWH(0, 0, thickness, wallHeight), paint);
+    // 왼쪽 벽
     canvas.drawRect(
-      Rect.fromLTWH(worldSize.x - thickness, 0, thickness, wallHeight),
+      Rect.fromLTWH(0, wallTopY, thickness, wallVisualHeight + thickness), 
       paint,
     );
+    // 오른쪽 벽
+    canvas.drawRect(
+      Rect.fromLTWH(worldSize.x - thickness, wallTopY, thickness, wallVisualHeight + thickness), 
+      paint,
+    );
+    // 바닥
     canvas.drawRect(Rect.fromLTWH(0, floorTopY, worldSize.x, thickness), paint);
   }
 }
