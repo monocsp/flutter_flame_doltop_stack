@@ -16,7 +16,11 @@ class StackingApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Flutter Flame Start',
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue),
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.blue,
+        fontFamily: 'Pretendard',
+      ),
       home: const HomeScreen(),
     );
   }
@@ -29,16 +33,55 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Home')),
-      body: Center(
-        child: ElevatedButton(
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const FlameScreen()),
-            );
-          },
-          child: const Text('시작'),
-        ),
+      body: Stack(
+        children: [
+          // 1. 그라데이션 배경
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: [0.0, 0.3, 1.0],
+                colors: [
+                  Color(0xFF997FFF), // 상단 (우측 끝에 있던 100% 보라색)
+                  Color(0xFFF293FF), // 중상단 (30% 핑크색)
+                  Color(0xFFFFD582), // 하단 (0% 노란/피치색)
+                ],
+              ),
+            ),
+          ),
+
+          // 2. 파티클 효과 (임시: TODO 애니메이션)
+          // 구현하려면 CustomPainter나 AnimatedBuilder를 사용해 별빛들을 그려줘야 합니다.
+
+          // 3. 중앙 텍스트
+          const Center(
+            child: Text(
+              '천천히 느껴지는\n감각에 집중해 보세요',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.black87,
+                fontSize: 18,
+                fontWeight: FontWeight.w400,
+                height: 1.5,
+              ),
+            ),
+          ),
+
+          // 4. 닫기/취소 버튼 (시작 버튼으로 일단 기능 연결)
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + 16,
+            right: 16,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 32),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const FlameScreen()),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -92,13 +135,13 @@ class _FlameScreenState extends State<FlameScreen> {
         .listAssets()
         .where(
           (path) =>
-              (path.contains('assets/images/unstructured/') || 
-               path.contains('assets/images/structured/')) &&
+              (path.contains('assets/images/unstructured/') ||
+                  path.contains('assets/images/structured/')) &&
               path.endsWith('.png') &&
               RegExp(r'td_\d+_\d+_\d+').hasMatch(path),
         )
         .toList(growable: true);
-    
+
     // 무작위성을 위해 섞어서 반환합니다.
     candidates.shuffle(math.Random());
     return candidates;
@@ -154,7 +197,10 @@ class _FlameScreenState extends State<FlameScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   child: ValueListenableBuilder<int>(
                     valueListenable: game.activeStoneCount,
                     builder: (_, count, __) {
@@ -200,13 +246,14 @@ class _FlameScreenState extends State<FlameScreen> {
                   onPressed: game.spawnNow,
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    textStyle: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                    ),
+                    textStyle: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   child: const Text('추가'),
                 ),
@@ -220,10 +267,7 @@ class _FlameScreenState extends State<FlameScreen> {
 }
 
 class _AnimatedMeterText extends StatefulWidget {
-  const _AnimatedMeterText({
-    required this.meters,
-    required this.style,
-  });
+  const _AnimatedMeterText({required this.meters, required this.style});
 
   final int meters;
   final TextStyle style;
@@ -259,10 +303,7 @@ class _AnimatedMeterTextState extends State<_AnimatedMeterText> {
       duration: const Duration(milliseconds: 420),
       curve: Curves.easeOutCubic,
       builder: (_, value, __) {
-        return Text(
-          '높이 : ${value.round()}m',
-          style: widget.style,
-        );
+        return Text('높이 : ${value.round()}m', style: widget.style);
       },
     );
   }

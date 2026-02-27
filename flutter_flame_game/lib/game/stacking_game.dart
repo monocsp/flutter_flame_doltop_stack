@@ -291,8 +291,12 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     _spawnAccumulator += dt;
     if (_pendingInitialSpawnCount > 0) {
       _initialSpawnDelayRemaining -= dt;
-      while (_pendingInitialSpawnCount > 0 && _initialSpawnDelayRemaining <= 0) {
-        _spawnStone(seedOffset: (initialSpawnCount - _pendingInitialSpawnCount).toDouble());
+      while (_pendingInitialSpawnCount > 0 &&
+          _initialSpawnDelayRemaining <= 0) {
+        _spawnStone(
+          seedOffset: (initialSpawnCount - _pendingInitialSpawnCount)
+              .toDouble(),
+        );
         _pendingInitialSpawnCount--;
         _initialSpawnDelayRemaining += _initialSpawnInterval;
       }
