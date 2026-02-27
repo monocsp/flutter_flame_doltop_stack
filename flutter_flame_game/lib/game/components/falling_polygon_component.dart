@@ -33,6 +33,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     this.onRemoved,
     this.enableContinuousCollision = false,
     required this.spawnedAtSeconds,
+    this.isKinematic = false,
   });
 
   final List<Vector2> vertices;
@@ -49,6 +50,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
   final VoidCallback? onRemoved;
   final bool enableContinuousCollision;
   final double spawnedAtSeconds;
+  final bool isKinematic;
 
   String get imageAssetPath => assetData.assetPath;
   double get imageAspectRatio => assetData.aspectRatio;
@@ -102,7 +104,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
 
     final bodyDef = BodyDef()
-      ..type = BodyType.dynamic
+      ..type = isKinematic ? BodyType.kinematic : BodyType.dynamic
       ..position = initialPosition
       ..angle = initialAngle
       ..linearVelocity = initialLinearVelocity ?? Vector2.zero()
@@ -129,6 +131,14 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
 
     return body;
+  }
+
+  /// 물리 엔진의 영향을 받도록 동적 바디로 전환합니다.
+  void makeDynamic() {
+    if (body.bodyType != BodyType.dynamic) {
+      body.setType(BodyType.dynamic);
+      body.setAwake(true);
+    }
   }
 
   /// 스프라이트(PNG) 혹은 SVG를 로드해 시각 자식 컴포넌트로 붙입니다.

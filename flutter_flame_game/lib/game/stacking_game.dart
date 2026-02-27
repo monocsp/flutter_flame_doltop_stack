@@ -18,11 +18,19 @@ import 'assets/png_processor.dart';
 import 'terrain/terrain_profile_extractor.dart';
 import 'systems/drag_controller.dart';
 
-/// 돌의 외형 분류를 정의합니다.
 enum StoneCategory {
   unstructured, // 비정형 (자연스러운 돌)
   structured, // 정형 (가공된 모양)
   all, // 전체
+}
+
+/// 온보딩 진행 상태를 정의합니다.
+enum OnboardingState {
+  none, // 일반 게임 모드
+  intro, // 1단계: 천천히 느껴지는 감각에 집중해 보세요
+  selectStone, // 2단계: 첫 번째 돌을 골라볼까요? (여러 돌 스폰 후 대기)
+  dragStone, // 3단계: 돌을 쌓을 때 손 끝에 느껴지는 감각... (돌 선택 및 낙하, 드래그 유도)
+  stackFinish, // 4단계: 이제부터 돌탑을 차분히 쌓아볼까요? (돌탑 연출 후 완료 대기)
 }
 
 /// 고정 스텝 물리 업데이트를 위한 Forge2D 월드 래퍼입니다.
@@ -61,13 +69,14 @@ class FixedStepForge2DWorld extends Forge2DWorld {
   }
 }
 
-/// 게임 전체를 조율하는 메인 클래스입니다.
 class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   StackingGame({
     required List<String> stoneSpriteAssets,
     this.category = StoneCategory.unstructured, // 기본값은 unstructured
     bool debugDrawCollisionShapes = false,
     this.enableImageCollisionHints = false,
+    this.initialOnboarding = false,
+    this.initialSpawnCount = 5,
   }) : _allAvailableAssets = List<String>.from(stoneSpriteAssets),
        _debugDrawCollisionShapes = debugDrawCollisionShapes,
        super(
@@ -85,7 +94,13 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   final List<String> _allAvailableAssets;
   final StoneCategory category;
   final bool enableImageCollisionHints;
+  final bool initialOnboarding;
+  final int initialSpawnCount;
   bool _debugDrawCollisionShapes;
+
+  late final ValueNotifier<OnboardingState> onboardingState = ValueNotifier(
+    initialOnboarding ? OnboardingState.intro : OnboardingState.none,
+  );
 
   /// 현재 카테고리 설정에 따라 필터링된 에셋 목록
   List<String> get stoneSpriteAssets {
@@ -106,6 +121,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   final math.Random _random = math.Random();
   final List<FallingPolygonComponent> _activeStones = [];
   final Map<String, StoneAssetData> _stoneAssetMetadata = {};
+  final List<String> _onboardingInitialAssets = []; // 온보딩용 랜덤 에셋 저장
   final ValueNotifier<int> activeStoneCount = ValueNotifier(0);
   final ValueNotifier<int> towerHeightMeters = ValueNotifier(0);
 
@@ -118,7 +134,6 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   static const int maxActiveStones = 36;
   static const double despawnMargin = 15.0;
   static const double spawnInterval = 1.05;
-  static const int initialSpawnCount = 5;
   static const double _initialSpawnInterval = 0.15;
   static const bool autoSpawnEnabled = false;
   static const double _initialBottomFocusLockDuration = 4.0;
@@ -196,11 +211,299 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     _globalTopY = _worldSize!.y - BoundaryComponent.floorMarginFromBottom;
     _historicalHighestTopY = _globalTopY;
     _updateTowerHeightMeters();
+
     unawaited(_tryInitializeWorld());
+  }
+
+  void transitionToStep2SelectStone() {
+    onboardingState.value = OnboardingState.selectStone;
+    _spawnOnboardingSelectionStones();
+  }
+
+  Future<void> _spawnOnboardingSelectionStones() async {
+    if (_worldSize == null) return;
+
+    final placementData = [
+      {
+        'path': 'assets/images/unstructured/td_1_11_3.png',
+        'uiX': 221.0,
+        'uiY': 264.0, // 294 - 30
+        'uiW': 168.0,
+        'uiH': 129.0,
+        'angle': 0.0,
+      },
+      {
+        'path': 'assets/images/unstructured/td_1_33_5.png',
+        'uiX': 62.0,
+        'uiY': 322.0, // 352 - 30
+        'uiW': 140.0,
+        'uiH': 80.0,
+        'angle': -22.0,
+      },
+      {
+        'path': 'assets/images/unstructured/td_1_30_6.png',
+        'uiX': 213.0,
+        'uiY': 407.0, // 437 - 30
+        'uiW': 163.0,
+        'uiH': 156.0,
+        'angle': 0.0,
+      },
+      {
+        'path': 'assets/images/unstructured/td_1_9_2.png',
+        'uiX': 117.0,
+        'uiY': 457.0, // 487 - 30
+        'uiW': 101.0,
+        'uiH': 126.0,
+        'angle': 0.0,
+      },
+      {
+        'path': 'assets/images/unstructured/td_1_15_4.png',
+        'uiX': -10.0,
+        'uiY': 436.0, // 원래 466이었으므로 이번엔 제외 없이 - 30 적용
+        'uiW': 111.0,
+        'uiH': 111.0,
+        'angle': 0.0,
+      },
+      {
+        'path': 'assets/images/unstructured/td_1_24_7.png',
+        'uiX': 0.0,
+        'uiY': 581.0, // 예외 유지
+        'uiW': 181.0,
+        'uiH': 103.0,
+        'angle': 28.0,
+      },
+      {
+        'path': 'assets/images/unstructured/td_1_1_1.png',
+        'uiX': 209.0,
+        'uiY': 561.0, // 예외 유지, 아까 실수로 수정했던 531에서 원복
+        'uiW': 210.0,
+        'uiH': 120.0,
+        'angle': -25.0,
+      },
+    ];
+
+    _onboardingInitialAssets.clear();
+    for (final data in placementData) {
+      _onboardingInitialAssets.add(data['path'] as String);
+    }
+
+    // UI(OnboardingScreen) 측에 실제로 뽑힌 7개의 돌 에셋 목록을 전달
+    onStonesSpawned?.call(List.unmodifiable(_onboardingInitialAssets));
+
+    final worldSize = _worldSize!;
+    final ratioX = worldSize.x / 375.0;
+    final ratioY = worldSize.y / 812.0;
+    final baseY = _cameraBottomLimitY();
+
+    for (int i = 0; i < placementData.length; i++) {
+      final data = placementData[i];
+      final path = data['path'] as String;
+      final uiX = data['uiX'] as double;
+      final uiY = data['uiY'] as double;
+      final uiW = data['uiW'] as double;
+      final uiH = data['uiH'] as double;
+      final degrees = data['angle'] as double;
+
+      if (!_stoneAssetMetadata.containsKey(path)) {
+        final metadata = await _pngProcessor.prepareAssets([path]);
+        if (metadata.containsKey(path)) {
+          _stoneAssetMetadata[path] = metadata[path]!;
+        }
+      }
+
+      final aspect = uiW / uiH;
+      final metadata =
+          _stoneAssetMetadata[path] ??
+          StoneAssetData(
+            assetPath: path,
+            type: StoneAssetType.png,
+            aspectRatio: aspect,
+            densityMultiplier: 1.0,
+          );
+
+      // 화면상에 유저가 지정한 좌상단 좌표(uiX, uiY)를 Center 좌표로 보정
+      final centerXUi = uiX + uiW / 2;
+      final centerYUi = uiY + uiH / 2;
+
+      final cx = centerXUi * ratioX;
+      final cy = baseY + (centerYUi * ratioY);
+
+      // Flame 내에서의 물리적 크기 보정 (비율 왜곡 방지를 위해 ratioX로 통일)
+      final worldW = uiW * ratioX;
+      final worldH = uiH * ratioX;
+      final sizeScale = (aspect >= 1.0) ? worldH : worldW;
+
+      final angle = degrees * (math.pi / 180.0); // degree(각도) -> radian(라디안) 변환
+
+      final fallbackColor =
+          _fallbackColors[_random.nextInt(_fallbackColors.length)];
+      final baseShape = _basePolygons[_random.nextInt(_basePolygons.length)];
+
+      final stone = FallingPolygonComponent(
+        vertices: baseShape,
+        fallbackColor: fallbackColor,
+        assetData: metadata,
+        initialPosition: Vector2(cx, cy),
+        initialAngle: angle,
+        initialLinearVelocity: Vector2.zero(),
+        sizeScale: sizeScale,
+        strategy: enableImageCollisionHints
+            ? CollisionShapeStrategy.autoFromImage
+            : CollisionShapeStrategy.circleCompound,
+        maxFixturesPerBody: 4,
+        debugDrawFixtures: _debugDrawCollisionShapes,
+        enableContinuousCollision: true,
+        spawnedAtSeconds: _timeSinceStart,
+        isKinematic: true, // 중력 무시
+        onRemoved: () {
+          _activeStones.removeWhere((s) => !s.isMounted);
+          _scheduleActiveStoneCountSync();
+        },
+      );
+
+      _activeStones.add(stone);
+      world.add(stone);
+    }
+  }
+
+  void _onOnboardingStoneSelected(Body body) {
+    HapticFeedback.lightImpact();
+    // 선택된 돌 찾기
+    final selectedStone = _activeStones.firstWhere((s) => s.body == body);
+
+    // 나머지 삭제
+    for (final stone in List.from(_activeStones)) {
+      if (stone != selectedStone) {
+        stone.removeFromParent();
+        _activeStones.remove(stone);
+      }
+    }
+    _scheduleActiveStoneCountSync();
+
+    // 선택된 돌을 dynamic으로 변경하여 중력 반영
+    selectedStone.makeDynamic();
+
+    // 상태를 dragStone(3단계)으로 전환
+    onboardingState.value = OnboardingState.dragStone;
+
+    // 콜백이 있다면 실행 (Flutter UI 전환용)
+    onStoneSelected?.call(selectedStone.assetData.assetPath);
+  }
+
+  /// 온보딩 중 처음 7개의 돌이 스폰되었을 때 UI에 목록을 알려주기 위한 콜백
+  Function(List<String>)? onStonesSpawned;
+
+  /// 온보딩 중 돌을 선택했을 때 Flutter UI로 신호를 보내기 위한 콜백
+  Function(String)? onStoneSelected;
+
+  void transitionToStep4StackFinish() async {
+    onboardingState.value = OnboardingState.stackFinish;
+    HapticFeedback.lightImpact();
+
+    if (_worldSize == null) return;
+
+    // 기존 돌 모두 제거 후 중앙 정렬로 다시 스폰 (4단계 연출)
+    for (final stone in List.from(_activeStones)) {
+      stone.removeFromParent();
+    }
+    _activeStones.clear();
+
+    final zoom = camera.viewfinder.zoom;
+    // safeArea를 대략 무시한 디바이스 상단에서 273 픽셀 위치를 월드 좌표로 변환
+    final startYWidget = 273.0;
+    final startYWorld = camera.viewfinder.position.y + (startYWidget / zoom);
+
+    final centerX = _worldSize!.x / 2;
+
+    // 3개 정도 돌출
+    final stackAssets = _onboardingInitialAssets.take(3).toList();
+
+    double currentY = startYWorld;
+    for (int i = 0; i < stackAssets.length; i++) {
+      final path = stackAssets[i];
+      final metadata =
+          _stoneAssetMetadata[path] ??
+          StoneAssetData(
+            assetPath: path,
+            type: StoneAssetType.png,
+            aspectRatio: 1.0,
+            densityMultiplier: 1.0,
+          );
+
+      final angle = (_random.nextDouble() * 10 - 5) * (math.pi / 180);
+      final fallbackColor =
+          _fallbackColors[_random.nextInt(_fallbackColors.length)];
+      final baseShape = _basePolygons[_random.nextInt(_basePolygons.length)];
+
+      final sizeScale = 8.0 + (i * 1.5); // 아래로 갈수록 조금 더 크게
+
+      final stone = FallingPolygonComponent(
+        vertices: baseShape,
+        fallbackColor: fallbackColor,
+        assetData: metadata,
+        initialPosition: Vector2(centerX, currentY),
+        initialAngle: angle,
+        initialLinearVelocity: Vector2.zero(),
+        sizeScale: sizeScale,
+        strategy: enableImageCollisionHints
+            ? CollisionShapeStrategy.autoFromImage
+            : CollisionShapeStrategy.circleCompound,
+        maxFixturesPerBody: 4,
+        debugDrawFixtures: _debugDrawCollisionShapes,
+        enableContinuousCollision: true,
+        spawnedAtSeconds: _timeSinceStart,
+        isKinematic: true, // 공중에 고정
+        onRemoved: () {},
+      );
+
+      _activeStones.add(stone);
+      world.add(stone);
+
+      currentY += 12.0; // 돌 간의 대략적인 간격
+    }
+  }
+
+  void completeOnboarding() {
+    onboardingState.value = OnboardingState.none;
+    HapticFeedback.heavyImpact();
+    // 온보딩 자산 정리 후 게임 시작
+    for (final stone in List.from(_activeStones)) {
+      stone.makeDynamic(); // 떨어지도록 설정
+    }
+    // 온보딩 중 잠겼던 생성/조작 로직 재개 (원점)
   }
 
   @override
   void onPanStart(DragStartInfo info) {
+    if (onboardingState.value == OnboardingState.selectStone) {
+      final point = screenToWorld(info.eventPosition.widget);
+      Body? selectedBody;
+      var bestDistance = double.infinity;
+      for (final stone in _activeStones) {
+        if (!stone.isMounted || stone.body.bodyType != BodyType.kinematic) {
+          continue;
+        }
+        final distance = stone.body.position.distanceToSquared(point);
+        final touched = stone.body.fixtures.any(
+          (fixture) => fixture.testPoint(point),
+        );
+        if (touched && distance < bestDistance) {
+          bestDistance = distance;
+          selectedBody = stone.body;
+        }
+      }
+
+      if (selectedBody != null) {
+        _onOnboardingStoneSelected(selectedBody);
+      }
+      return;
+    }
+
+    if (onboardingState.value == OnboardingState.stackFinish ||
+        onboardingState.value == OnboardingState.intro) {
+      return; // 조작 무시
+    }
+
     _initialBottomFocusLockRemaining = 0.0;
     _autoPushCooldown = _manualControlLockDuration;
     _logCameraDebug(
@@ -258,6 +561,14 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   @override
   void update(double dt) {
     super.update(dt);
+    if (onboardingState.value == OnboardingState.stackFinish ||
+        onboardingState.value == OnboardingState.selectStone ||
+        onboardingState.value == OnboardingState.intro) {
+      // 카메라 업데이트, 스폰 정지
+      _dragController.tick();
+      return;
+    }
+
     _timeSinceStart += dt;
     _dragController.tick();
     _syncActiveStoneCountFromWorld();
@@ -624,21 +935,6 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     } finally {
       _worldInitializing = false;
     }
-  }
-
-  static double _estimateAspectFromBaseShape(List<Vector2> points) {
-    var minX = double.infinity,
-        maxX = -double.infinity,
-        minY = double.infinity,
-        maxY = -double.infinity;
-    for (final point in points) {
-      if (point.x < minX) minX = point.x;
-      if (point.x > maxX) maxX = point.x;
-      if (point.y < minY) minY = point.y;
-      if (point.y > maxY) maxY = point.y;
-    }
-    return (maxX - minX).abs().clamp(0.1, double.infinity) /
-        (maxY - minY).abs().clamp(0.1, double.infinity);
   }
 
   void _despawnOutOfBoundsStones() {
