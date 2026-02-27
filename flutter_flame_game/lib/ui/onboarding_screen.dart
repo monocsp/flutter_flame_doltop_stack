@@ -484,7 +484,7 @@ class _Step4StackFinishState extends State<_Step4StackFinish> {
             opacity: _showTapText ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 800),
             child: const Align(
-              alignment: Alignment.center,
+              alignment: Alignment.topCenter,
               child: Padding(
                 padding: EdgeInsets.only(top: 150.0), // 살짝 위에 띄움
                 child: Text(
@@ -504,16 +504,16 @@ class _Step4StackFinishState extends State<_Step4StackFinish> {
           AnimatedOpacity(
             opacity: _showTapText ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 800),
-            child: const Align(
-              alignment: Alignment.bottomCenter,
+            child: Align(
+              alignment: Alignment.topCenter,
               child: Padding(
-                padding: EdgeInsets.only(bottom: 80.0),
+                padding: EdgeInsets.only(top: 250.0),
                 child: Text(
                   '화면을 터치하여 시작하기',
                   style: TextStyle(
-                    color: Colors.black87,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                    color: Colors.black87.withValues(alpha: 0.5),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
