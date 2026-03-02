@@ -412,14 +412,38 @@ const _stoneDimensions = {
   'assets/images/unstructured/td_1_1_1.png': (210.0, 120.0),
 };
 
-class _Step4StackFinishState extends State<_Step4StackFinish> {
+class _Step4StackFinishState extends State<_Step4StackFinish>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _titleController;
+  Animation<double>? _titleFade;
+  Animation<Offset>? _titleSlide;
   bool _showTapText = false;
-  Timer? _timer;
+  Timer? _tapTextTimer;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer(const Duration(seconds: 3), () {
+
+    // 타이틀: 300ms 동안 fade in + slide up, 즉시 시작
+    _titleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+
+    _titleFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _titleController!, curve: Curves.easeOut),
+    );
+
+    _titleSlide = Tween<Offset>(begin: const Offset(0, 0.02), end: Offset.zero)
+        .animate(
+          CurvedAnimation(parent: _titleController!, curve: Curves.easeOut),
+        );
+
+    // 즉시 시작
+    _titleController!.forward();
+
+    // 타이틀 완료 후 500ms 뒤에 '터치하여 시작' 표시
+    _tapTextTimer = Timer(const Duration(milliseconds: 800), () {
       if (mounted) {
         setState(() {
           _showTapText = true;
@@ -430,7 +454,8 @@ class _Step4StackFinishState extends State<_Step4StackFinish> {
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _tapTextTimer?.cancel();
+    _titleController?.dispose();
     super.dispose();
   }
 
@@ -479,31 +504,34 @@ class _Step4StackFinishState extends State<_Step4StackFinish> {
             ),
           ),
 
-          // 3초 뒤 나타나는 텍스트 로직 (화면 터치 자체는 3초 전에도 언제든 가능)
-          AnimatedOpacity(
-            opacity: _showTapText ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 800),
-            child: const Align(
-              alignment: Alignment.topCenter,
-              child: Padding(
-                padding: EdgeInsets.only(top: 150.0), // 살짝 위에 띄움
-                child: Text(
-                  '이제부터 돌탑을\n차분히 쌓아볼까요?',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.black54,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w500,
-                    height: 1.5,
+          // 타이틀: fade in + slide up (300ms, 즉시)
+          SlideTransition(
+            position: _titleSlide ?? AlwaysStoppedAnimation(Offset.zero),
+            child: FadeTransition(
+              opacity: _titleFade ?? AlwaysStoppedAnimation(0.0),
+              child: const Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: EdgeInsets.only(top: 150.0),
+                  child: Text(
+                    '이제부터 돌탑을\n차분히 쌓아볼까요?',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.black54,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                      height: 1.5,
+                    ),
                   ),
                 ),
               ),
             ),
           ),
 
+          // '터치하여 시작' — 타이틀 완료 후 500ms 뒤 fade in
           AnimatedOpacity(
             opacity: _showTapText ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 800),
+            duration: const Duration(milliseconds: 500),
             child: Align(
               alignment: Alignment.topCenter,
               child: Padding(

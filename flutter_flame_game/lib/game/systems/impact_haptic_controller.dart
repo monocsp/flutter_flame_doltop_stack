@@ -16,9 +16,7 @@ class ImpactHapticController {
   /// 연속 진동 최소 간격 (ms)
   static const int _cooldownMs = 80;
 
-  /// 속도 → 강도 매핑 임계값
-  static const double _heavyThreshold = 20.0;
-  static const double _mediumThreshold = 12.0;
+  /// 속도 → 강도 매핑 임계값 (이 이상이면 lightImpact, 미만이면 selectionClick)
   static const double _lightThreshold = 5.0;
 
   /// 돌 터치(드래그 시작) 시 1회 진동
@@ -56,8 +54,6 @@ class ImpactHapticController {
 
   // ── 강도 매핑 ─────────────────────────────────────
   _HapticIntensity _intensityFromSpeed(double speed) {
-    if (speed >= _heavyThreshold) return _HapticIntensity.heavy;
-    if (speed >= _mediumThreshold) return _HapticIntensity.medium;
     if (speed >= _lightThreshold) return _HapticIntensity.light;
     return _HapticIntensity.selectionClick;
   }
