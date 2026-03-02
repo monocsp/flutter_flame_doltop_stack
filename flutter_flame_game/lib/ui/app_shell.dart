@@ -43,6 +43,7 @@ class FlameScreen extends StatefulWidget {
     this.stoneAssetPaths,
     this.initialSpawnCount = 5,
     this.enableHaptic = true,
+    this.difficulty = DifficultyLevel.easy,
   });
 
   /// 온보딩 모드로 시작할지 여부
@@ -62,6 +63,10 @@ class FlameScreen extends StatefulWidget {
 
   /// 돌 충돌 시 햅틱(진동) 피드백 활성화 여부 (기본값: true)
   final bool enableHaptic;
+
+  /// 게임 난이도 (기본값: easy — 가로 긴 돌만 등장)
+  /// easy: 가로 긴 돌만, normal: 가로 + 정사각형, hard: 전체
+  final DifficultyLevel difficulty;
 
   @override
   State<FlameScreen> createState() => _FlameScreenState();
@@ -96,6 +101,7 @@ class _FlameScreenState extends State<FlameScreen> {
             ? 0
             : widget.initialSpawnCount,
         enableHaptic: widget.enableHaptic,
+        difficulty: widget.difficulty,
       );
 
       setState(() {
@@ -197,91 +203,300 @@ class _FlameScreenState extends State<FlameScreen> {
                 GameWidget(game: game),
 
                 // 기존 UI (온보딩이 아닐 때만 표시되도록)
-                ValueListenableBuilder<OnboardingState>(
-                  valueListenable: game.onboardingState,
-                  builder: (context, state, _) {
-                    if (state != OnboardingState.none) {
-                      return const SizedBox.shrink();
-                    }
-                    return Stack(
-                      children: [
-                        Positioned(
-                          top: 12,
-                          left: 12,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: Colors.black.withAlpha(140),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
+                Positioned.fill(
+                  child: ValueListenableBuilder<OnboardingState>(
+                    valueListenable: game.onboardingState,
+                    builder: (context, state, _) {
+                      if (state != OnboardingState.none) {
+                        return const SizedBox.shrink();
+                      }
+                      return Stack(
+                        children: [
+                          // ── HUD 좌측 상단 ──────────────────
+                          Positioned(
+                            top: 12,
+                            left: 12,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withAlpha(140),
+                                borderRadius: BorderRadius.circular(10),
                               ),
-                              child: ValueListenableBuilder<int>(
-                                valueListenable: game.activeStoneCount,
-                                builder: (_, count, __) {
-                                  return Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        '돌 개수 : $count',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      ValueListenableBuilder<int>(
-                                        valueListenable: game.towerHeightMeters,
-                                        builder: (_, meters, __) {
-                                          return _AnimatedMeterText(
-                                            meters: meters,
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ],
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          top: 12,
-                          right: 12,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: Colors.black.withAlpha(140),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: TextButton(
-                              onPressed: game.spawnNow,
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.white,
+                              child: Padding(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 10,
+                                  horizontal: 12,
+                                  vertical: 8,
                                 ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                textStyle: const TextStyle(
-                                  fontWeight: FontWeight.w700,
+                                child: ValueListenableBuilder<int>(
+                                  valueListenable: game.activeStoneCount,
+                                  builder: (_, count, __) {
+                                    return ValueListenableBuilder<bool>(
+                                      valueListenable: game.difficultyCleared,
+                                      builder: (_, cleared, __) {
+                                        return ValueListenableBuilder<bool>(
+                                          valueListenable: game.goalReached,
+                                          builder: (_, goalHit, __) {
+                                            return Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                // 난이도 라벨 (클리어 시 초록색 + 탭 가능)
+                                                GestureDetector(
+                                                  onTap: cleared
+                                                      ? () => game
+                                                            .advanceToNextLevel()
+                                                      : null,
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Text(
+                                                        '난이도 : ${game.difficulty.label}',
+                                                        style: TextStyle(
+                                                          color: cleared
+                                                              ? const Color(
+                                                                  0xFF4CAF50,
+                                                                )
+                                                              : Colors.white70,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          fontSize: 12,
+                                                        ),
+                                                      ),
+                                                      if (cleared) ...[
+                                                        const SizedBox(
+                                                          width: 4,
+                                                        ),
+                                                        const Text(
+                                                          '✓',
+                                                          style: TextStyle(
+                                                            color: Color(
+                                                              0xFF4CAF50,
+                                                            ),
+                                                            fontSize: 12,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ],
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+
+                                                // 돌 개수
+                                                Text(
+                                                  '돌 개수 : $count',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+
+                                                // 높이 + 목표
+                                                ValueListenableBuilder<int>(
+                                                  valueListenable:
+                                                      game.towerHeightMeters,
+                                                  builder: (_, meters, __) {
+                                                    final target = game
+                                                        .difficulty
+                                                        .targetHeight;
+                                                    return _AnimatedMeterText(
+                                                      meters: meters,
+                                                      targetMeters: target,
+                                                      style: TextStyle(
+                                                        color: goalHit
+                                                            ? const Color(
+                                                                0xFF4CAF50,
+                                                              )
+                                                            : Colors.white,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                    );
+                                                  },
+                                                ),
+                                              ],
+                                            );
+                                          },
+                                        );
+                                      },
+                                    );
+                                  },
                                 ),
                               ),
-                              child: const Text('추가'),
                             ),
                           ),
-                        ),
-                      ],
-                    );
-                  },
+
+                          // ── 우측 상단 추가 버튼 ──────────────
+                          Positioned(
+                            top: 12,
+                            right: 12,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withAlpha(140),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: TextButton(
+                                onPressed: game.spawnNow,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 10,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  textStyle: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                child: const Text('추가'),
+                              ),
+                            ),
+                          ),
+
+                          // ── 카운트다운 오버레이 (3→2→1) ──────
+                          ValueListenableBuilder<int>(
+                            valueListenable: game.stableCountdown,
+                            builder: (_, countdown, __) {
+                              if (countdown < 1 || countdown > 3) {
+                                return const SizedBox.shrink();
+                              }
+                              return Center(
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 300),
+                                  child: Text(
+                                    '$countdown',
+                                    key: ValueKey(countdown),
+                                    style: TextStyle(
+                                      fontSize: 120,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white.withAlpha(200),
+                                      shadows: [
+                                        Shadow(
+                                          blurRadius: 30,
+                                          color: Colors.black.withAlpha(100),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+
+                          // ── 성공 다이얼로그 오버레이 ──────────
+                          ValueListenableBuilder<bool>(
+                            valueListenable: game.levelCleared,
+                            builder: (_, cleared, __) {
+                              if (!cleared) return const SizedBox.shrink();
+                              final hasNext = game.difficulty.nextLevel != null;
+                              return Container(
+                                color: Colors.black.withAlpha(140),
+                                child: Center(
+                                  child: Container(
+                                    margin: const EdgeInsets.symmetric(
+                                      horizontal: 40,
+                                    ),
+                                    padding: const EdgeInsets.all(32),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(20),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          blurRadius: 20,
+                                          color: Colors.black.withAlpha(60),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Text(
+                                          '🎉',
+                                          style: TextStyle(fontSize: 48),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          '${game.difficulty.label} 난이도 성공!',
+                                          style: const TextStyle(
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.black87,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          '${game.difficulty.targetHeight}m 달성',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.black54,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 24),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            // 머무르기 버튼
+                                            OutlinedButton(
+                                              onPressed: () =>
+                                                  game.stayAtCurrentLevel(),
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: Colors.black87,
+                                                side: const BorderSide(
+                                                  color: Colors.black26,
+                                                ),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 20,
+                                                      vertical: 12,
+                                                    ),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                              ),
+                                              child: const Text('머무르기'),
+                                            ),
+                                            if (hasNext) ...[
+                                              const SizedBox(width: 12),
+                                              // 다음 단계 버튼
+                                              ElevatedButton(
+                                                onPressed: () =>
+                                                    game.advanceToNextLevel(),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: const Color(
+                                                    0xFF4CAF50,
+                                                  ),
+                                                  foregroundColor: Colors.white,
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 20,
+                                                        vertical: 12,
+                                                      ),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          12,
+                                                        ),
+                                                  ),
+                                                ),
+                                                child: const Text('다음 단계'),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 ),
               ],
             ),
@@ -293,10 +508,17 @@ class _FlameScreenState extends State<FlameScreen> {
 }
 
 class _AnimatedMeterText extends StatefulWidget {
-  const _AnimatedMeterText({required this.meters, required this.style});
+  const _AnimatedMeterText({
+    required this.meters,
+    required this.style,
+    this.targetMeters,
+  });
 
   final int meters;
   final TextStyle style;
+
+  /// 목표 높이 (null이면 표시하지 않음)
+  final int? targetMeters;
 
   @override
   State<_AnimatedMeterText> createState() => _AnimatedMeterTextState();
@@ -324,12 +546,15 @@ class _AnimatedMeterTextState extends State<_AnimatedMeterText> {
 
   @override
   Widget build(BuildContext context) {
+    final target = widget.targetMeters;
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: _from.toDouble(), end: _to.toDouble()),
       duration: const Duration(milliseconds: 420),
       curve: Curves.easeOutCubic,
       builder: (_, value, __) {
-        return Text('높이 : ${value.round()}m', style: widget.style);
+        final heightStr = '높이 : ${value.round()}m';
+        final display = target != null ? '$heightStr / ${target}m' : heightStr;
+        return Text(display, style: widget.style);
       },
     );
   }
