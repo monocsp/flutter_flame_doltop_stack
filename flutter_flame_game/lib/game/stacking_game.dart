@@ -17,6 +17,7 @@ import 'assets/stone_asset_data.dart';
 import 'assets/png_processor.dart';
 import 'terrain/terrain_profile_extractor.dart';
 import 'systems/drag_controller.dart';
+import 'systems/impact_haptic_controller.dart';
 
 enum StoneCategory {
   unstructured, // 비정형 (자연스러운 돌)
@@ -150,6 +151,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   bool _heightUpdateLocked = true;
   Vector2? _worldSize;
   late final DragController _dragController;
+  late final ImpactHapticController _impactHaptic = ImpactHapticController();
 
   /// 안착된(Settled) 돌 중 가장 높은 위치(최솟값 Y)를 상시 추적합니다.
   double _globalTopY = 0.0;
@@ -165,7 +167,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   static const double _focusLineRatio = 1 / 2; // 최상단 돌을 화면의 상단 1/2 지점에 배치
   static const double _pushThresholdRatio = 1 / 2; // 돌이 화면의 1/2를 차지하면 카메라 이동 준비
   static const double _topScrollHideMargin = 1.0;
-  static const bool _cameraDebugLogEnabled = true;
+  static const bool _cameraDebugLogEnabled = false;
   static const double _settledVelocityThreshold = 0.8;
   static const double _heightSettleDelaySeconds = 1.0;
   static const double _heightCandidateMinAgeSeconds = 0.7;
@@ -510,6 +512,9 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
       'pan-start pos=${info.eventPosition.widget}, cooldown=${_autoPushCooldown.toStringAsFixed(2)}',
     );
     _dragController.startDrag(screenToWorld(info.eventPosition.widget));
+    if (_dragController.isDragging) {
+      _impactHaptic.onDragStart();
+    }
   }
 
   @override
@@ -543,10 +548,9 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   @override
   void onPanEnd(DragEndInfo info) {
     _autoPushCooldown = _manualControlLockDuration;
-    _logCameraDebug(
-      'pan-end velocity=${info.velocity}, cooldown=${_autoPushCooldown.toStringAsFixed(2)}',
-    );
+    debugPrint('[Haptic] onPanEnd isDragging=${_dragController.isDragging}');
     _dragController.endDrag();
+    _markLastDraggedForImpact();
   }
 
   @override
@@ -556,6 +560,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
       'pan-cancel cooldown=${_autoPushCooldown.toStringAsFixed(2)}',
     );
     _dragController.endDrag();
+    _markLastDraggedForImpact();
   }
 
   @override
@@ -679,8 +684,17 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
         continue;
       }
 
-      final y = stone.body.position.y;
-      if (y < minY) minY = y;
+      // 바디 중심이 아닌 AABB 상단(가장 높은 지점)을 사용하여
+      // 돌 크기에 관계없이 실제 최상단 위치를 정확히 측정합니다.
+      double stoneTopY = stone.body.position.y;
+      final aabb = AABB();
+      for (final fixture in stone.body.fixtures) {
+        fixture.shape.computeAABB(aabb, stone.body.transform, 0);
+        if (aabb.lowerBound.y < stoneTopY) {
+          stoneTopY = aabb.lowerBound.y;
+        }
+      }
+      if (stoneTopY < minY) minY = stoneTopY;
     }
 
     if (minY == double.infinity) {
@@ -743,6 +757,31 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     _autoPushCooldown = _manualControlLockDuration;
     _markHeightDisturbance();
     _spawnStone();
+  }
+
+  /// 마지막으로 드래그했던 돌의 충돌 추적을 시작합니다.
+  /// endDrag() 호출 후에 호출해야 합니다 (lastDraggedBody가 설정된 후).
+  void _markLastDraggedForImpact() {
+    final lastBody = _dragController.lastDraggedBody;
+    if (lastBody == null) {
+      debugPrint(
+        '[Haptic] _markLastDraggedForImpact SKIP: lastDraggedBody is null',
+      );
+      return;
+    }
+    // DragController와 동일하게 world.children에서 직접 검색합니다.
+    for (final stone in world.children.whereType<FallingPolygonComponent>()) {
+      if (!stone.isMounted) continue;
+      if (identical(stone.body, lastBody)) {
+        // onImpactContact가 설정되지 않은 경우 안전하게 설정
+        stone.onImpactContact ??= (speed) => _impactHaptic.onImpact(speed);
+        stone.startTrackingImpacts(_timeSinceStart);
+        return;
+      }
+    }
+    debugPrint(
+      '[Haptic] _markLastDraggedForImpact FAIL: stone not found in world',
+    );
   }
 
   Future<void> _spawnStone({double seedOffset = 0.0}) async {
@@ -847,6 +886,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
         _scheduleActiveStoneCountSync();
       },
     );
+    stone.onImpactContact = (speed) => _impactHaptic.onImpact(speed);
 
     _activeStones.add(stone);
     world.add(stone);

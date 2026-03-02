@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flame_forge2d/flame_forge2d.dart';
+import 'package:flutter/foundation.dart';
 
 /// 마우스 조인트 기반 드래그 튜닝값입니다.
 class DragTuning {
@@ -57,6 +58,9 @@ class DragController {
   bool get isDragging => _draggedBody != null;
   bool isBodyBeingDragged(Body body) => identical(_draggedBody, body);
 
+  /// 가장 마지막으로 드래그했던 바디 (드래그 종료 후에도 유지)
+  Body? lastDraggedBody;
+
   /// `MouseJoint` 생성에 필요한 정적 기준 바디를 만듭니다.
   Future<void> initialize() async {
     _groundBody = world.createBody(BodyDef()..type = BodyType.static);
@@ -72,7 +76,9 @@ class DragController {
       if (body.bodyType != BodyType.dynamic) continue;
 
       final distance = body.position.distanceToSquared(worldPoint);
-      final touched = body.fixtures.any((fixture) => fixture.testPoint(worldPoint));
+      final touched = body.fixtures.any(
+        (fixture) => fixture.testPoint(worldPoint),
+      );
       if (!touched) continue;
 
       if (distance < bestDistance) {
@@ -111,9 +117,12 @@ class DragController {
   void endDrag() {
     _destroyJoint();
     if (_draggedBody != null) {
+      lastDraggedBody = _draggedBody;
       _draggedBody!.linearVelocity = Vector2.zero();
       _draggedBody!.setAwake(true);
       _draggedBody = null;
+    } else {
+      debugPrint('[Haptic][Drag] endDrag WARNING: _draggedBody was null!');
     }
     _dragTarget = null;
   }
@@ -131,7 +140,9 @@ class DragController {
     if (vy < 0) {
       final suppressionFactor = math.max(
         tuning.maxCompressionSuppression,
-        math.pow(tuning.compressionSuppressionPerStone, aboveContactCount).toDouble(),
+        math
+            .pow(tuning.compressionSuppressionPerStone, aboveContactCount)
+            .toDouble(),
       );
       final upwardMultiplier = aboveContactCount > 0
           ? tuning.downwardVelocityMultiplier * suppressionFactor
@@ -155,8 +166,9 @@ class DragController {
     var count = 0;
     for (final contact in body.contacts) {
       if (!contact.isTouching()) continue;
-      final other =
-          contact.fixtureA.body == body ? contact.fixtureB.body : contact.fixtureA.body;
+      final other = contact.fixtureA.body == body
+          ? contact.fixtureB.body
+          : contact.fixtureA.body;
       if (other.bodyType != BodyType.dynamic) continue;
       if (other.position.y < body.position.y - 0.15) {
         count++;

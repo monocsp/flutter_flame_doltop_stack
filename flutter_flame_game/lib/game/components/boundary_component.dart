@@ -11,6 +11,9 @@ class BoundaryComponent extends BodyComponent {
   final Vector2 worldSize;
   final bool includeFloor;
 
+  /// 좌/우 벽 fixture 참조. 돌의 접촉 판별에서 벽/바닥을 구분하는 데 사용합니다.
+  final Set<Fixture> wallFixtures = {};
+
   // 물리 벽/바닥 fixture의 두께(충돌 판정 두께)입니다.
   static const double thickness = 0.8;
   // 원래 기본 바닥 오프셋(하단 기준 기본 여백)입니다.
@@ -61,6 +64,10 @@ class BoundaryComponent extends BodyComponent {
         ..friction = 0.9
         ..restitution = 0.0,
     );
+
+    // 벽 fixture 참조 보관 (fixture 목록에서 마지막 두 개)
+    wallFixtures.addAll(body.fixtures.toList());
+
     if (includeFloor) {
       final floor = PolygonShape()
         ..setAsBox(

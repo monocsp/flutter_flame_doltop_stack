@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flame/components.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flame_svg/flame_svg.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../assets/stone_asset_data.dart';
@@ -52,12 +53,51 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
   final double spawnedAtSeconds;
   final bool isKinematic;
 
+  /// 드래그 후 충돌 추적 모드 여부 (매 beginContact마다 진동 발동)
+  bool _trackingImpacts = false;
+
+  /// 충돌 추적 남은 시간 (초)
+  double _impactTrackingRemaining = 0.0;
+
+  /// 추적 윈도우 (초)
+  static const double _impactTrackingDuration = 2.0;
+
+  /// 충돌 시 호출되는 콜백. 인자는 충돌 순간 속도(impactSpeed).
+  void Function(double impactSpeed)? onImpactContact;
+
+  /// 드래그 종료 시 게임에서 호출하여 충돌 추적을 시작합니다.
+  void startTrackingImpacts(double currentGameTime) {
+    _trackingImpacts = true;
+    _impactTrackingRemaining = _impactTrackingDuration;
+    _logHaptic('startTrackingImpacts stone="$imageAssetPath"');
+
+    // 이미 접촉 중이면 즉시 진동 발동
+    if (isTouchingFloor || isTouchingStone || isTouchingWall) {
+      final speed = body.linearVelocity.length;
+      _logHaptic('immediate-contact speed=${speed.toStringAsFixed(2)}');
+      onImpactContact?.call(speed);
+    }
+  }
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    // 추적 윈도우 만료 체크
+    if (_trackingImpacts) {
+      _impactTrackingRemaining -= dt;
+      if (_impactTrackingRemaining <= 0) {
+        _trackingImpacts = false;
+        _logHaptic('tracking EXPIRED for "$imageAssetPath"');
+      }
+    }
+  }
+
   String get imageAssetPath => assetData.assetPath;
   double get imageAspectRatio => assetData.aspectRatio;
   double get densityMultiplier => assetData.densityMultiplier;
   List<Vector2>? get imageCollisionHint => assetData.collisionHint;
 
-  static const bool _aspectLogEnabled = true;
+  static const bool _aspectLogEnabled = false;
   // 무게감(질량)에 직접 영향: fixture 밀도(density).
   static const double _stoneDensity = 6.0;
   // 현실의 돌처럼 거친 느낌을 주기 위해 마찰력을 대폭 높입니다.
@@ -65,7 +105,8 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
   static const double _stoneRestitution = 0.0;
 
   bool _visualReady = false;
-  int _boundaryContacts = 0;
+  int _floorContacts = 0;
+  int _wallContacts = 0;
   int _stoneContacts = 0;
 
   late final Vector2 _halfSize = _computeHalfSize(imageAspectRatio, sizeScale);
@@ -74,7 +115,9 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     _halfSize,
   );
 
-  bool get isTouchingBoundary => _boundaryContacts > 0;
+  bool get isTouchingFloor => _floorContacts > 0;
+  bool get isTouchingWall => _wallContacts > 0;
+  bool get isTouchingBoundary => _floorContacts > 0;
   bool get isTouchingStone => _stoneContacts > 0;
   bool get isSelectable => isMounted && body.bodyType == BodyType.dynamic;
 
@@ -180,17 +223,43 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
 
   @override
   void beginContact(Object other, Contact contact) {
-    if (other is BoundaryComponent || other is TerrainFloorComponent) {
-      _boundaryContacts++;
+    if (other is BoundaryComponent) {
+      // 접촉한 fixture가 벽인지 바닥인지 구분합니다.
+      final boundaryFixture = contact.fixtureA.body.userData == other
+          ? contact.fixtureA
+          : contact.fixtureB;
+      if (other.wallFixtures.contains(boundaryFixture)) {
+        _wallContacts++;
+      } else {
+        _floorContacts++;
+      }
+    } else if (other is TerrainFloorComponent) {
+      _floorContacts++;
     } else if (other is FallingPolygonComponent) {
       _stoneContacts++;
+    }
+
+    // 충돌 추적 중이면 매 충돌마다 진동 콜백 호출
+    if (_trackingImpacts && onImpactContact != null) {
+      final speed = body.linearVelocity.length;
+      _logHaptic('beginContact FIRE speed=${speed.toStringAsFixed(2)}');
+      onImpactContact!(speed);
     }
   }
 
   @override
   void endContact(Object other, Contact contact) {
-    if (other is BoundaryComponent || other is TerrainFloorComponent) {
-      _boundaryContacts = math.max(0, _boundaryContacts - 1);
+    if (other is BoundaryComponent) {
+      final boundaryFixture = contact.fixtureA.body.userData == other
+          ? contact.fixtureA
+          : contact.fixtureB;
+      if (other.wallFixtures.contains(boundaryFixture)) {
+        _wallContacts = math.max(0, _wallContacts - 1);
+      } else {
+        _floorContacts = math.max(0, _floorContacts - 1);
+      }
+    } else if (other is TerrainFloorComponent) {
+      _floorContacts = math.max(0, _floorContacts - 1);
     } else if (other is FallingPolygonComponent) {
       _stoneContacts = math.max(0, _stoneContacts - 1);
     }
@@ -425,5 +494,10 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
           ),
         )
         .toList(growable: false);
+  }
+
+  void _logHaptic(String message) {
+    if (!kDebugMode) return;
+    debugPrint('[Haptic][Stone] $message');
   }
 }
