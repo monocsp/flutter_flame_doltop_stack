@@ -284,7 +284,7 @@ class _FlameScreenState extends State<FlameScreen> {
 
                                                 // 돌 개수
                                                 Text(
-                                                  '돌 개수 : $count',
+                                                  '돌 개수 : $count / ${StackingGame.maxActiveStones}',
                                                   style: const TextStyle(
                                                     color: Colors.white,
                                                     fontWeight: FontWeight.w700,

@@ -219,7 +219,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   final TerrainProfileExtractor _terrainProfileExtractor =
       const TerrainProfileExtractor();
 
-  static const int maxActiveStones = 36;
+  static const int maxActiveStones = 50;
   static const double despawnMargin = 15.0;
   static const double spawnInterval = 1.05;
   static const double _initialSpawnInterval = 0.15;
