@@ -29,11 +29,20 @@ class StackingApp extends StatelessWidget {
 }
 
 /// 에셋을 준비하고 Flame `GameWidget`을 올리는 화면입니다.
+///
+/// 주요 매개변수:
+/// - [stoneAssetPaths]: 게임에 사용할 돌 이미지 에셋 경로 목록.
+///   null이면 AssetManifest에서 자동으로 수집합니다.
+/// - [initialSpawnCount]: 게임 시작 시 최초로 떨어뜨릴 돌 개수 (기본값: 5)
+/// - [enableHaptic]: 돌 충돌 시 햅틱(진동) 피드백 활성화 여부 (기본값: true)
 class FlameScreen extends StatefulWidget {
   const FlameScreen({
     super.key,
     this.initialOnboarding = false,
     this.onGameCreated,
+    this.stoneAssetPaths,
+    this.initialSpawnCount = 5,
+    this.enableHaptic = true,
   });
 
   /// 온보딩 모드로 시작할지 여부
@@ -41,6 +50,18 @@ class FlameScreen extends StatefulWidget {
 
   /// 게임 인스턴스가 생성되었을 때 콜백 (외부에서 제어하기 위함)
   final ValueChanged<StackingGame>? onGameCreated;
+
+  /// 게임에 사용할 돌 이미지 에셋 경로 목록
+  /// null이면 AssetManifest에서 모든 'td_?_?_?' 패턴의 돌을 자동 수집합니다.
+  /// 예: ['assets/images/unstructured/td_1_1_1.png', ...]
+  final List<String>? stoneAssetPaths;
+
+  /// 게임 시작 시 최초로 생성할 돌 개수 (기본값: 5)
+  /// 온보딩 모드에서는 자동으로 0으로 설정됩니다.
+  final int initialSpawnCount;
+
+  /// 돌 충돌 시 햅틱(진동) 피드백 활성화 여부 (기본값: true)
+  final bool enableHaptic;
 
   @override
   State<FlameScreen> createState() => _FlameScreenState();
@@ -58,18 +79,23 @@ class _FlameScreenState extends State<FlameScreen> {
   }
 
   /// 돌 에셋 전체 목록을 준비합니다.
-  /// 이제 제한된 개수가 아닌 사용 가능한 모든 돌 에셋을 수집합니다.
+  /// [stoneAssetPaths]가 지정되어 있으면 해당 목록을 사용하고,
+  /// null이면 AssetManifest에서 자동으로 수집합니다.
   Future<void> _prepareGame() async {
     try {
-      final allAssets = await _collectAllStoneAssets();
+      final allAssets =
+          widget.stoneAssetPaths ?? await _collectAllStoneAssets();
 
       if (!mounted) return;
       final game = StackingGame(
         stoneSpriteAssets: allAssets,
         enableImageCollisionHints: true,
         debugDrawCollisionShapes: _debugEnabled,
-        initialOnboarding: widget.initialOnboarding, // 전달받은 모드
-        initialSpawnCount: widget.initialOnboarding ? 0 : 5, // 온보딩 땐 0개
+        initialOnboarding: widget.initialOnboarding,
+        initialSpawnCount: widget.initialOnboarding
+            ? 0
+            : widget.initialSpawnCount,
+        enableHaptic: widget.enableHaptic,
       );
 
       setState(() {

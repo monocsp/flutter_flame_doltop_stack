@@ -72,12 +72,26 @@ class FixedStepForge2DWorld extends Forge2DWorld {
 
 class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   StackingGame({
+    /// 돌 이미지 에셋 경로 목록 (예: 'assets/images/unstructured/td_1_1_1.png')
     required List<String> stoneSpriteAssets,
-    this.category = StoneCategory.unstructured, // 기본값은 unstructured
+
+    /// 돌 카테고리 필터 (기본값: unstructured)
+    this.category = StoneCategory.unstructured,
+
+    /// 충돌 디버그 도형 표시 여부
     bool debugDrawCollisionShapes = false,
+
+    /// 이미지 기반 충돌 힌트 사용 여부
     this.enableImageCollisionHints = false,
+
+    /// 온보딩 모드 시작 여부
     this.initialOnboarding = false,
+
+    /// 게임 시작 시 최초로 생성할 돌 개수 (기본값: 5)
     this.initialSpawnCount = 5,
+
+    /// 돌 충돌 시 햅틱(진동) 피드백 활성화 여부 (기본값: true)
+    this.enableHaptic = true,
   }) : _allAvailableAssets = List<String>.from(stoneSpriteAssets),
        _debugDrawCollisionShapes = debugDrawCollisionShapes,
        super(
@@ -97,6 +111,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   final bool enableImageCollisionHints;
   final bool initialOnboarding;
   final int initialSpawnCount;
+  final bool enableHaptic;
   bool _debugDrawCollisionShapes;
 
   late final ValueNotifier<OnboardingState> onboardingState = ValueNotifier(
@@ -512,7 +527,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
       'pan-start pos=${info.eventPosition.widget}, cooldown=${_autoPushCooldown.toStringAsFixed(2)}',
     );
     _dragController.startDrag(screenToWorld(info.eventPosition.widget));
-    if (_dragController.isDragging) {
+    if (enableHaptic && _dragController.isDragging) {
       _impactHaptic.onDragStart();
     }
   }
@@ -550,7 +565,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     _autoPushCooldown = _manualControlLockDuration;
     debugPrint('[Haptic] onPanEnd isDragging=${_dragController.isDragging}');
     _dragController.endDrag();
-    _markLastDraggedForImpact();
+    if (enableHaptic) _markLastDraggedForImpact();
   }
 
   @override
@@ -560,7 +575,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
       'pan-cancel cooldown=${_autoPushCooldown.toStringAsFixed(2)}',
     );
     _dragController.endDrag();
-    _markLastDraggedForImpact();
+    if (enableHaptic) _markLastDraggedForImpact();
   }
 
   @override
