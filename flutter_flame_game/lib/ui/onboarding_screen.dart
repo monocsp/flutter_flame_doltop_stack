@@ -334,31 +334,112 @@ class _Step2SelectStone extends StatelessWidget {
   }
 }
 
-/// [Step 3] 돌을 쌓을 때 손 끝에 느껴지는 감각을 느껴보세요
-class _Step3DragStone extends StatelessWidget {
+/// [Step 3] 돌을 쌓을 때 손끝에 느껴지는 감각을 느껴보세요
+class _Step3DragStone extends StatefulWidget {
   const _Step3DragStone({super.key, required this.onNext});
 
   final VoidCallback onNext;
+
+  @override
+  State<_Step3DragStone> createState() => _Step3DragStoneState();
+}
+
+class _Step3DragStoneState extends State<_Step3DragStone> {
+  /// false = 첫 번째 텍스트, true = 두 번째 텍스트
+  bool _showSecondText = false;
+  Timer? _switchTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // 3초 후 두 번째 텍스트로 전환
+    _switchTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _showSecondText = true;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _switchTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
         // 상단 텍스트 영역 (터치 무시)
-        const IgnorePointer(
+        IgnorePointer(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(height: 150),
-              Text(
-                '돌을 쌓을 때 손 끝에 느껴지는\n감각을 느껴보세요',
-                textAlign: TextAlign.center, // 중앙 정렬 보장
-                style: TextStyle(
-                  color: Colors.black87,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w500,
-                  height: 1.6,
-                ),
+              const SizedBox(height: 150),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                // 등장하는 텍스트만 300ms 페이드 인
+                transitionBuilder: (child, animation) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+                // 이전 텍스트는 즉시 사라짐
+                switchOutCurve: Curves.linear,
+                switchInCurve: Curves.easeOut,
+                layoutBuilder: (currentChild, previousChildren) {
+                  return Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // 이전 텍스트 즉시 숨기기
+                      ...previousChildren.map(
+                        (child) => Opacity(opacity: 0, child: child),
+                      ),
+                      if (currentChild != null) currentChild,
+                    ],
+                  );
+                },
+                child: _showSecondText
+                    ? RichText(
+                        key: const ValueKey('second'),
+                        textAlign: TextAlign.center,
+                        text: const TextSpan(
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w500,
+                            height: 1.6,
+                          ),
+                          children: [
+                            TextSpan(text: '돌을 쌓을때 '),
+                            TextSpan(
+                              text: '들리는 소리',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            TextSpan(text: '에\n집중해 보세요'),
+                          ],
+                        ),
+                      )
+                    : RichText(
+                        key: const ValueKey('first'),
+                        textAlign: TextAlign.center,
+                        text: const TextSpan(
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w500,
+                            height: 1.6,
+                          ),
+                          children: [
+                            TextSpan(text: '돌을 쌓을 때 '),
+                            TextSpan(
+                              text: '손끝에 느껴지는',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            TextSpan(text: '\n감각을 느껴보세요'),
+                          ],
+                        ),
+                      ),
               ),
             ],
           ),
@@ -369,7 +450,7 @@ class _Step3DragStone extends StatelessWidget {
           top: MediaQuery.paddingOf(context).top + 16,
           left: 16,
           child: TextButton(
-            onPressed: onNext,
+            onPressed: widget.onNext,
             style: TextButton.styleFrom(
               backgroundColor: Colors.black45,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -518,8 +599,8 @@ class _Step4StackFinishState extends State<_Step4StackFinish>
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.black54,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
                       height: 1.5,
                     ),
                   ),
@@ -535,7 +616,7 @@ class _Step4StackFinishState extends State<_Step4StackFinish>
             child: Align(
               alignment: Alignment.topCenter,
               child: Padding(
-                padding: EdgeInsets.only(top: 250.0),
+                padding: EdgeInsets.only(top: 230.0),
                 child: Text(
                   '화면을 터치하여 시작하기',
                   style: TextStyle(
