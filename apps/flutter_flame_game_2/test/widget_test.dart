@@ -1,16 +1,13 @@
-import 'package:flame/game.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_flame_game_2/main.dart';
 
 void main() {
-  testWidgets('renders Flame game widget', (WidgetTester tester) async {
-    await tester.pumpWidget(
-      GameWidget(
-        game: BasicFlameGame(),
-      ),
-    );
+  testWidgets('renders game select screen', (WidgetTester tester) async {
+    await tester.pumpWidget(const GameHubApp());
 
-    expect(find.byType(GameWidget<BasicFlameGame>), findsOneWidget);
+    expect(find.text('FLAME GAME HUB'), findsOneWidget);
+    expect(find.text('Basic Flame Game'), findsOneWidget);
+    expect(find.text('Suika Game'), findsOneWidget);
   });
 }
