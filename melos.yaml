@@ -1,0 +1,12 @@
+name: flutter_flame_doltop_stack
+
+packages:
+  - apps/**
+
+scripts:
+  analyze:
+    run: melos exec -- flutter analyze
+    description: Analyze all Flutter apps in the monorepo.
+  test:
+    run: melos exec -- flutter test
+    description: Run tests for all Flutter apps in the monorepo.
