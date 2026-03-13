@@ -44,6 +44,10 @@ class FlameScreen extends StatefulWidget {
     this.initialSpawnCount = 5,
     this.enableHaptic = true,
     this.difficulty = DifficultyLevel.easy,
+    this.backgroundGradient,
+    this.backgroundWidget,
+    this.backgroundAssetPaths,
+    this.backgroundBaseAssetPath,
   });
 
   /// 온보딩 모드로 시작할지 여부
@@ -54,19 +58,28 @@ class FlameScreen extends StatefulWidget {
 
   /// 게임에 사용할 돌 이미지 에셋 경로 목록
   /// null이면 AssetManifest에서 모든 'td_?_?_?' 패턴의 돌을 자동 수집합니다.
-  /// 예: ['assets/images/unstructured/td_1_1_1.png', ...]
   final List<String>? stoneAssetPaths;
 
   /// 게임 시작 시 최초로 생성할 돌 개수 (기본값: 5)
-  /// 온보딩 모드에서는 자동으로 0으로 설정됩니다.
   final int initialSpawnCount;
 
   /// 돌 충돌 시 햅틱(진동) 피드백 활성화 여부 (기본값: true)
   final bool enableHaptic;
 
-  /// 게임 난이도 (기본값: easy — 가로 긴 돌만 등장)
-  /// easy: 가로 긴 돌만, normal: 가로 + 정사각형, hard: 전체
+  /// 게임 난이도 (기본값: easy)
   final DifficultyLevel difficulty;
+
+  /// Flutter UI 레이어의 그라데이션 배경 (null이면 기본 그라데이션 사용)
+  final Gradient? backgroundGradient;
+
+  /// Flutter UI 레이어의 파티클/배경 위젯 (null이면 기본 ParticleBackground 사용)
+  final Widget? backgroundWidget;
+
+  /// Flame 월드 내 루핑 배경 이미지 에셋 경로 (null이면 Flame 배경 없음)
+  final List<String>? backgroundAssetPaths;
+
+  /// Flame 월드 내 바닥 오버레이 에셋 경로 (null이면 바닥 오버레이 없음)
+  final String? backgroundBaseAssetPath;
 
   @override
   State<FlameScreen> createState() => _FlameScreenState();
@@ -102,6 +115,8 @@ class _FlameScreenState extends State<FlameScreen> {
             : widget.initialSpawnCount,
         enableHaptic: widget.enableHaptic,
         difficulty: widget.difficulty,
+        backgroundAssetPaths: widget.backgroundAssetPaths,
+        backgroundBaseAssetPath: widget.backgroundBaseAssetPath,
       );
 
       setState(() {
@@ -176,24 +191,29 @@ class _FlameScreenState extends State<FlameScreen> {
       backgroundColor: Colors.transparent, // 배경 투명
       body: Stack(
         children: [
-          // 1. 공통 그라데이션 배경
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                stops: [0.0, 0.3, 1.0],
-                colors: [
-                  Color(0xFF997FFF), // 상단 보라
-                  Color(0xFFF293FF), // 중상단 핑크
-                  Color(0xFFFFD582), // 하단 피치
-                ],
+          // 1. 배경 (그라데이션 또는 커스텀)
+          if (widget.backgroundGradient != null)
+            Container(
+              decoration: BoxDecoration(gradient: widget.backgroundGradient),
+            )
+          else
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: [0.0, 0.3, 1.0],
+                  colors: [
+                    Color(0xFF997FFF),
+                    Color(0xFFF293FF),
+                    Color(0xFFFFD582),
+                  ],
+                ),
               ),
             ),
-          ),
 
-          // 2. 파티클 이펙트 배경
-          const ParticleBackground(),
+          // 2. 파티클 이펙트 배경 (커스텀 또는 기본)
+          widget.backgroundWidget ?? const ParticleBackground(),
 
           SafeArea(
             top: true,
