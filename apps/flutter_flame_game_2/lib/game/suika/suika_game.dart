@@ -8,8 +8,7 @@ import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flame_forge2d/flame_forge2d.dart' as f2;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_flame_game_2/game/suika/assets/png_processor.dart';
-import 'package:flutter_flame_game_2/game/suika/assets/stone_asset_data.dart';
+import 'package:flutter_flame_game_2/game/suika/prepared_suika_assets.dart';
 import 'package:flutter_flame_game_2/game/suika/stone_spec.dart';
 import 'package:flutter_flame_game_2/game/suika/suika_hud_state.dart';
 import 'package:flutter_flame_game_2/game/suika/suika_stone_body.dart';
@@ -62,13 +61,8 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     required this.hudState,
     required this.boardWidth,
     required this.boardHeight,
-    List<String>? stoneAssetPaths,
-  }) : stoneCatalog = StoneCatalog.buildValues(stoneAssetPaths),
-       assert(
-         (stoneAssetPaths ?? StoneCatalog.defaultAssetPaths).length ==
-             StoneCatalog.stageCount,
-         'Suika stone image paths must contain exactly 9 entries.',
-       ),
+    required this.preparedAssets,
+  }) : stoneCatalog = preparedAssets.catalog,
        super(
          world: FixedStepForge2DWorld(
            fixedStep: 1 / 60,
@@ -92,6 +86,9 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
 
   /// 현재 세션의 9단계 스톤 카탈로그입니다.
   final List<StoneSpec> stoneCatalog;
+
+  /// 시작 전에 준비된 스톤 이미지/메타데이터 캐시입니다.
+  final PreparedSuikaAssets preparedAssets;
 
   /// 화면 상단 위험선 높이를 반환합니다.
   double get dangerLineY => 2.25;
@@ -131,10 +128,6 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   final Set<String> activeContactKeys = <String>{};
   final List<MergePair> pendingMerges = <MergePair>[];
   final Set<int> lockedStoneIds = <int>{};
-  final PngProcessor pngProcessor = PngProcessor();
-  final Map<String, StoneAssetData> stoneAssetMetadata =
-      <String, StoneAssetData>{};
-  final Map<String, ui.Image> previewImages = <String, ui.Image>{};
 
   int stoneSequence = 0;
 
@@ -143,17 +136,6 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   Future<void> onLoad() async {
     camera.viewfinder.anchor = Anchor.topLeft;
     camera.viewfinder.position = Vector2.zero();
-    stoneAssetMetadata.addAll(
-      await pngProcessor.prepareAssets(
-        stoneCatalog
-            .map((StoneSpec spec) => spec.assetPath)
-            .toList(growable: false),
-      ),
-    );
-    for (final StoneSpec spec in stoneCatalog) {
-      final ByteData data = await rootBundle.load(spec.assetPath);
-      previewImages[spec.assetPath] = await decodePreviewImage(data);
-    }
     await add(ScreenHitbox());
     await addAll(<Component>[
       BoundsBody(boardWidth: boardWidth, boardHeight: boardHeight),
@@ -286,6 +268,10 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
         .toList(growable: false);
     final Set<String> touchingKeys = <String>{...activeContactKeys};
 
+    for (final SuikaStoneBody stone in stones) {
+      stone.contactIndicator = StoneContactIndicator.none;
+    }
+
     for (int i = 0; i < stones.length; i += 1) {
       final SuikaStoneBody first = stones[i];
       for (int j = i + 1; j < stones.length; j += 1) {
@@ -294,9 +280,19 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
           continue;
         }
 
+        if (first.contactIndicator == StoneContactIndicator.none) {
+          first.contactIndicator = StoneContactIndicator.touching;
+        }
+        if (second.contactIndicator == StoneContactIndicator.none) {
+          second.contactIndicator = StoneContactIndicator.touching;
+        }
+
         if (!canTrackMergeContact(first, second)) {
           continue;
         }
+
+        first.contactIndicator = StoneContactIndicator.mergeReady;
+        second.contactIndicator = StoneContactIndicator.mergeReady;
         touchingKeys.add(pairKey(first.id, second.id));
       }
     }
@@ -523,16 +519,11 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     Vector2? initialLinearVelocity,
   }) {
     stoneSequence += 1;
+    final PreparedStoneAsset prepared = preparedAssets.assetFor(spec);
     return SuikaStoneBody(
       id: stoneSequence,
       spec: spec,
-      assetData:
-          stoneAssetMetadata[spec.assetPath] ??
-          StoneAssetData(
-            assetPath: spec.assetPath,
-            aspectRatio: 1.0,
-            densityMultiplier: 1.0,
-          ),
+      preparedAsset: prepared,
       spawnPosition: position,
       createdAt: elapsedTime,
       initialLinearVelocity: initialLinearVelocity,
@@ -571,36 +562,26 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
       Offset(topRight.x, topRight.y),
       linePaint,
     );
-    final ui.Image? image = previewImages[currentStone.assetPath];
-    if (image != null) {
-      final double imageAspectRatio = image.width / image.height;
-      final double previewHeight = previewRadius * 2.3;
-      final double previewWidth = previewHeight * imageAspectRatio;
-      final Rect dst = Rect.fromCenter(
-        center: Offset(spawnCenter.x, spawnCenter.y),
-        width: previewWidth,
-        height: previewHeight,
-      );
-      canvas.drawImageRect(
-        image,
-        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-        dst,
-        Paint(),
-      );
-    }
+    final ui.Image image = preparedAssets.assetFor(currentStone).image;
+    final double imageAspectRatio = image.width / image.height;
+    final double previewHeight = previewRadius * 2.3;
+    final double previewWidth = previewHeight * imageAspectRatio;
+    final Rect dst = Rect.fromCenter(
+      center: Offset(spawnCenter.x, spawnCenter.y),
+      width: previewWidth,
+      height: previewHeight,
+    );
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      dst,
+      Paint(),
+    );
     canvas.drawLine(
       Offset(spawnCenter.x, 0),
       Offset(spawnCenter.x, spawnCenter.y - previewRadius - 10),
       linePaint,
     );
-  }
-
-  Future<ui.Image> decodePreviewImage(ByteData data) {
-    final Completer<ui.Image> completer = Completer<ui.Image>();
-    ui.decodeImageFromList(data.buffer.asUint8List(), (ui.Image image) {
-      completer.complete(image);
-    });
-    return completer.future;
   }
 }
 

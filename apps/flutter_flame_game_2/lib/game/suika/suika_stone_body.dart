@@ -1,12 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flame/components.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_flame_game_2/game/suika/assets/stone_asset_data.dart';
+import 'package:flutter_flame_game_2/game/suika/prepared_suika_assets.dart';
 import 'package:flutter_flame_game_2/game/suika/stone_spec.dart';
 import 'package:flutter_flame_game_2/game/suika/suika_game.dart';
 
@@ -18,7 +16,7 @@ class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
   SuikaStoneBody({
     required this.id,
     required this.spec,
-    required this.assetData,
+    required this.preparedAsset,
     required this.spawnPosition,
     required this.createdAt,
     this.initialLinearVelocity,
@@ -31,7 +29,7 @@ class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
   final StoneSpec spec;
 
   /// 이미지 기반 충돌/비율 메타데이터입니다.
-  final StoneAssetData assetData;
+  final PreparedStoneAsset preparedAsset;
 
   /// 월드 내 생성 위치입니다.
   final Vector2 spawnPosition;
@@ -48,22 +46,20 @@ class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
   StoneContactIndicator contactIndicator = StoneContactIndicator.none;
 
   late final Vector2 halfSize = _computeHalfSize(
-    assetData.aspectRatio,
+    preparedAsset.assetData.aspectRatio,
     spec.radius * 2,
   );
 
   /// 화면상 스프라이트 외곽 기준의 느슨한 합체 반경입니다.
   late final double mergeRadius = math.max(halfSize.x, halfSize.y) * 0.92;
-  late final List<Vector2>? overlayPolygon = _buildOverlayPolygon();
+  late final List<Vector2>? overlayPolygon = preparedAsset.overlayPolygon;
 
   @override
   Future<void> onLoad() async {
     await super.onLoad();
-    final ByteData data = await rootBundle.load(spec.assetPath);
-    final ui.Image image = await decodeStoneImage(data);
     add(
       SpriteComponent(
-        sprite: Sprite(image),
+        sprite: Sprite(preparedAsset.image),
         size: _spriteWorldSize(),
         anchor: Anchor.center,
       ),
@@ -164,15 +160,6 @@ class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
     canvas.drawPath(path, outlinePaint);
   }
 
-  /// Flutter asset bundle에서 이미지를 직접 디코드합니다.
-  Future<ui.Image> decodeStoneImage(ByteData data) {
-    final Completer<ui.Image> completer = Completer<ui.Image>();
-    ui.decodeImageFromList(data.buffer.asUint8List(), (ui.Image image) {
-      completer.complete(image);
-    });
-    return completer.future;
-  }
-
   void _attachImageOrFallbackFixtures(Body targetBody, double stageProgress) {
     final List<Vector2>? safe = overlayPolygon;
     if (safe == null || safe.length < 3) {
@@ -204,7 +191,8 @@ class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
   }
 
   double _resolvedDensity(double stageProgress) {
-    return (2.8 + (stageProgress * 0.9)) * assetData.densityMultiplier;
+    return (2.8 + (stageProgress * 0.9)) *
+        preparedAsset.assetData.densityMultiplier;
   }
 
   double _resolvedFriction(double stageProgress) {
@@ -224,50 +212,5 @@ class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
 
     final double halfWidth = diameter * 0.5;
     return Vector2(halfWidth, halfWidth / safeAspect);
-  }
-
-  List<Vector2>? _buildOverlayPolygon() {
-    final List<Vector2>? hint = assetData.collisionHint;
-    if (hint == null || hint.length < 3) {
-      return null;
-    }
-
-    final List<Vector2> scaled = hint
-        .map((Vector2 p) => Vector2(p.x * halfSize.x, p.y * halfSize.y))
-        .toList(growable: false);
-    final List<Vector2> safe = _toConvexWithin8(scaled);
-    if (safe.length < 3 || safe.length > 8) {
-      return null;
-    }
-    return safe;
-  }
-
-  List<Vector2> _toConvexWithin8(List<Vector2> points) {
-    final List<Vector2> out = points.map(Vector2.copy).toList(growable: true);
-    if (out.length <= 8) {
-      return out;
-    }
-
-    while (out.length > 8) {
-      int minIndex = 0;
-      double minLoss = double.infinity;
-      for (int i = 0; i < out.length; i += 1) {
-        final Vector2 prev = out[(i - 1 + out.length) % out.length];
-        final Vector2 curr = out[i];
-        final Vector2 next = out[(i + 1) % out.length];
-        final double loss =
-            ((prev.x * (curr.y - next.y)) +
-                    (curr.x * (next.y - prev.y)) +
-                    (next.x * (prev.y - curr.y)))
-                .abs();
-        if (loss < minLoss) {
-          minLoss = loss;
-          minIndex = i;
-        }
-      }
-      out.removeAt(minIndex);
-    }
-
-    return out;
   }
 }

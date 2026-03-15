@@ -1,5 +1,6 @@
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_flame_game_2/game/suika/prepared_suika_assets.dart';
 import 'package:flutter_flame_game_2/game/suika/stone_spec.dart';
 import 'package:flutter_flame_game_2/game/suika/suika_game.dart';
 import 'package:flutter_flame_game_2/game/suika/suika_hud_state.dart';
@@ -29,8 +30,11 @@ class SuikaScreenState extends State<SuikaScreen> {
   SuikaScreenState();
 
   late final SuikaHudState hudState;
-  late SuikaGame currentGame;
+  PreparedSuikaAssets? preparedAssets;
+  SuikaGame? currentGame;
   int sessionVersion = 0;
+  bool isPreparing = true;
+  Object? loadError;
 
   @override
   void initState() {
@@ -38,7 +42,15 @@ class SuikaScreenState extends State<SuikaScreen> {
     hudState = SuikaHudState(
       initialCatalog: StoneCatalog.droppableValues(widget.stoneAssetPaths),
     );
-    currentGame = createGame();
+    prepareAssetsAndGame();
+  }
+
+  @override
+  void didUpdateWidget(covariant SuikaScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_sameAssetPaths(oldWidget.stoneAssetPaths, widget.stoneAssetPaths)) {
+      prepareAssetsAndGame();
+    }
   }
 
   @override
@@ -49,87 +61,86 @@ class SuikaScreenState extends State<SuikaScreen> {
 
   /// 새 세션 번호를 발급해 게임 위젯을 교체합니다.
   void restartGame() {
+    final PreparedSuikaAssets? assets = preparedAssets;
+    if (assets == null) {
+      return;
+    }
     hudState.resetForNewGame();
     setState(() {
       sessionVersion += 1;
-      currentGame = createGame();
+      currentGame = createGame(assets);
     });
   }
 
   /// 입력 위치를 보드 가로 비율로 바꿔 스포너를 이동시킵니다.
   void moveSpawnerForLocalDx(double localDx, double width) {
+    final SuikaGame? game = currentGame;
     if (width <= 0) {
       return;
     }
+    if (game == null) {
+      return;
+    }
     final double ratio = localDx / width;
-    currentGame.moveSpawnerByRatio(ratio);
+    game.moveSpawnerByRatio(ratio);
   }
 
   /// 드래그 종료 시 현재 스포너 위치에서 스톤을 떨어뜨립니다.
   void handlePanEnd() {
-    currentGame.dropCurrentStone();
+    currentGame?.dropCurrentStone();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: <Color>[
-              Color(0xFF1D1E24),
-              Color(0xFF2E1F1A),
-              Color(0xFF5C3D2E),
-            ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
-            child: Column(
-              children: <Widget>[
-                buildHud(),
-                const SizedBox(height: 6),
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (BuildContext context, BoxConstraints constraints) {
-                      final double boardWidth = constraints.maxWidth;
-                      final double boardHeight =
-                          boardWidth / SuikaGame.boardAspectRatio;
+  Future<void> prepareAssetsAndGame() async {
+    setState(() {
+      isPreparing = true;
+      loadError = null;
+    });
 
-                      return Align(
-                        alignment: Alignment.topCenter,
-                        child: SizedBox(
-                          width: boardWidth,
-                          height: boardHeight,
-                          child: Stack(
-                            children: <Widget>[
-                              buildInteractiveGameLayer(currentGame),
-                              buildGameOverOverlay(),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    try {
+      final PreparedSuikaAssets assets = await PreparedSuikaAssets.load(
+        stoneAssetPaths: widget.stoneAssetPaths,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        preparedAssets = assets;
+        currentGame = createGame(assets);
+        isPreparing = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        loadError = error;
+        isPreparing = false;
+      });
+    }
+  }
+
+  bool _sameAssetPaths(List<String> first, List<String> second) {
+    if (identical(first, second)) {
+      return true;
+    }
+    if (first.length != second.length) {
+      return false;
+    }
+    for (int i = 0; i < first.length; i += 1) {
+      if (first[i] != second[i]) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Suika 전용 고정 월드 크기로 새 게임 인스턴스를 만듭니다.
-  SuikaGame createGame() {
+  SuikaGame createGame(PreparedSuikaAssets assets) {
     return SuikaGame(
       hudState: hudState,
       boardWidth: SuikaGame.boardWidthUnits,
       boardHeight: SuikaGame.boardHeightUnits,
-      stoneAssetPaths: widget.stoneAssetPaths,
+      preparedAssets: assets,
     );
   }
 
@@ -299,7 +310,12 @@ class SuikaScreenState extends State<SuikaScreen> {
               clipBehavior: Clip.antiAlias,
               child: Padding(
                 padding: const EdgeInsets.all(5),
-                child: Image.asset(spec.assetPath, fit: BoxFit.contain),
+                child: preparedAssets == null
+                    ? const SizedBox.shrink()
+                    : RawImage(
+                        image: preparedAssets!.assetFor(spec).image,
+                        fit: BoxFit.contain,
+                      ),
               ),
             ),
           ],
@@ -390,6 +406,132 @@ class SuikaScreenState extends State<SuikaScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isPreparing) {
+      return buildLoadingScaffold(
+        child: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            CircularProgressIndicator(color: Color(0xFFF7C59F)),
+            SizedBox(height: 16),
+            Text(
+              '수박게임 에셋을 준비하는 중...',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFFF7F3E9),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (loadError != null || currentGame == null) {
+      return buildLoadingScaffold(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Text(
+              '에셋 준비 중 오류가 발생했습니다.',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFFF7F3E9),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '$loadError',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Color(0xFFD9CAB3)),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: prepareAssetsAndGame,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final SuikaGame game = currentGame!;
+    return buildGameScaffold(game);
+  }
+
+  Widget buildGameScaffold(SuikaGame game) {
+    return Scaffold(
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: <Color>[
+              Color(0xFF1D1E24),
+              Color(0xFF2E1F1A),
+              Color(0xFF5C3D2E),
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+            child: Column(
+              children: <Widget>[
+                buildHud(),
+                const SizedBox(height: 6),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (BuildContext context, BoxConstraints constraints) {
+                      final double boardWidth = constraints.maxWidth;
+                      final double boardHeight =
+                          boardWidth / SuikaGame.boardAspectRatio;
+
+                      return Align(
+                        alignment: Alignment.topCenter,
+                        child: SizedBox(
+                          width: boardWidth,
+                          height: boardHeight,
+                          child: Stack(
+                            children: <Widget>[
+                              buildInteractiveGameLayer(game),
+                              buildGameOverOverlay(),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildLoadingScaffold({required Widget child}) {
+    return Scaffold(
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: <Color>[
+              Color(0xFF1D1E24),
+              Color(0xFF2E1F1A),
+              Color(0xFF5C3D2E),
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: Center(child: Padding(padding: const EdgeInsets.all(24), child: child)),
       ),
     );
   }
