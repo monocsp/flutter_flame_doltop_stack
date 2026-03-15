@@ -1,7 +1,8 @@
 import 'dart:ui' as ui;
 
 import 'package:flame/components.dart';
-import 'package:flutter/services.dart';
+
+import '../../utils/asset_path_resolver.dart';
 
 /// 월드 하단을 기준으로 1~6 이미지를 위로 반복 타일링해 그리는 배경 컴포넌트입니다.
 class LoopingBackgroundComponent extends Component with HasGameReference {
@@ -126,9 +127,6 @@ class LoopingBackgroundComponent extends Component with HasGameReference {
   }
 
   Future<ui.Image> _loadUiImageFromAsset(String assetPath) async {
-    final data = await rootBundle.load(assetPath);
-    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
-    final frame = await codec.getNextFrame();
-    return frame.image;
+    return loadUiImageFromAsset(assetPath);
   }
 }

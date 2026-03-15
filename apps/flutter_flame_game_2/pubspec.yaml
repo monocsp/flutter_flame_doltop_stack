@@ -12,6 +12,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   flame: ^1.35.1
   flame_forge2d: ^0.19.2+4
+  flutter_flame_game:
+    path: ../flutter_flame_game
   image: ^4.7.2
 
 dev_dependencies:

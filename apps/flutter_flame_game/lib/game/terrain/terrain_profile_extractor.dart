@@ -1,8 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flame_forge2d/flame_forge2d.dart';
-import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 
 import 'terrain_profile.dart';
+import '../../utils/asset_path_resolver.dart';
 
 /// 바닥 오버레이 이미지에서 상단 경계선을 추출해 월드 프로파일로 변환합니다.
 class TerrainProfileExtractor {
@@ -73,8 +75,7 @@ class TerrainProfileExtractor {
   }
 
   Future<Uint8List> _loadAssetBytes(String path) async {
-    final data = await rootBundle.load(path);
-    return data.buffer.asUint8List();
+    return loadAssetBytes(path);
   }
 
   int? _findFirstOpaqueY({

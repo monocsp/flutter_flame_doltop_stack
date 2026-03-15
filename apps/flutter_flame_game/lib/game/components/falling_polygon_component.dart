@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flame/components.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
@@ -9,6 +10,7 @@ import 'package:flutter/material.dart';
 import '../assets/stone_asset_data.dart';
 import 'boundary_component.dart';
 import 'terrain_floor_component.dart';
+import '../../utils/asset_path_resolver.dart';
 
 enum CollisionShapeStrategy { circleCompound, convexPolygon, autoFromImage }
 
@@ -192,7 +194,20 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
 
     try {
       if (assetData.isSvg) {
-        final svg = await Svg.load(imageAssetPath);
+        Svg? svg;
+        Object? lastError;
+        for (final candidate in assetPathCandidates(imageAssetPath)) {
+          try {
+            svg = await Svg.load(candidate);
+            break;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        if (svg == null) {
+          throw lastError ??
+              FlutterError('Failed to load svg asset "$imageAssetPath".');
+        }
         add(
           SvgComponent(
             svg: svg,
@@ -202,10 +217,7 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
         );
         _visualReady = true;
       } else {
-        final flamePath = imageAssetPath.startsWith('assets/images/')
-            ? imageAssetPath.substring('assets/images/'.length)
-            : imageAssetPath;
-        final image = await game.images.load(flamePath);
+        final image = await _loadUiImage(imageAssetPath);
         add(
           SpriteComponent(
             sprite: Sprite(image),
@@ -219,6 +231,10 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
       debugPrint('[FallingPolygonComponent] Failed to load visual asset: $e');
       _visualReady = false;
     }
+  }
+
+  Future<ui.Image> _loadUiImage(String assetPath) async {
+    return loadUiImageFromAsset(assetPath);
   }
 
   @override

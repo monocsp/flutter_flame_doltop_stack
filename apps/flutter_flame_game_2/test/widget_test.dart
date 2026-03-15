@@ -7,7 +7,7 @@ void main() {
     await tester.pumpWidget(const GameHubApp());
 
     expect(find.text('FLAME GAME HUB'), findsOneWidget);
-    expect(find.text('Basic Flame Game'), findsOneWidget);
-    expect(find.text('Suika Game'), findsOneWidget);
+    expect(find.text('스택게임'), findsOneWidget);
+    expect(find.text('수박게임'), findsOneWidget);
   });
 }

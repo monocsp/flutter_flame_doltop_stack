@@ -1,6 +1,5 @@
-import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_flame_game_2/game/basic/basic_flame_game.dart';
+import 'package:flutter_flame_game/ui/app_shell.dart';
 import 'package:flutter_flame_game_2/ui/game_select_screen.dart';
 import 'package:flutter_flame_game_2/ui/suika_screen.dart';
 
@@ -27,30 +26,23 @@ class GameHubApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
         textTheme: Theme.of(context).textTheme.apply(
-              bodyColor: const Color(0xFFF7F3E9),
-              displayColor: const Color(0xFFF7F3E9),
-            ),
+          bodyColor: const Color(0xFFF7F3E9),
+          displayColor: const Color(0xFFF7F3E9),
+        ),
       ),
       home: const GameSelectScreen(),
     );
   }
 }
 
-/// 기존 샘플 Flame 게임 화면을 제공합니다.
-class BasicGameScreen extends StatelessWidget {
-  /// 샘플 게임 진입 화면을 생성합니다.
-  const BasicGameScreen({super.key});
+/// 현재 스택 게임 화면을 라우트 단위로 제공합니다.
+class StackGameRoute extends StatelessWidget {
+  /// 스택 게임 라우트를 생성합니다.
+  const StackGameRoute({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Basic Flame Game'),
-      ),
-      body: GameWidget<BasicFlameGame>(
-        game: BasicFlameGame(),
-      ),
-    );
+    return const FlameScreen();
   }
 }
 

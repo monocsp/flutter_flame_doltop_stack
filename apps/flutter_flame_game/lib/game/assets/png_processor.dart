@@ -1,9 +1,10 @@
 import 'dart:math' as math;
 import 'package:flame/extensions.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
+
 import 'stone_asset_data.dart';
+import '../../utils/asset_path_resolver.dart';
 
 /// PNG 이미지를 분석하여 충돌 힌트와 물리 메타데이터를 추출하는 클래스입니다.
 class PngProcessor {
@@ -20,7 +21,7 @@ class PngProcessor {
       if (!assetPath.toLowerCase().endsWith('.png')) continue;
       
       try {
-        final bytes = (await rootBundle.load(assetPath)).buffer.asUint8List();
+        final bytes = await loadAssetBytes(assetPath);
         final decoded = img.decodeImage(bytes);
         if (decoded == null) continue;
         

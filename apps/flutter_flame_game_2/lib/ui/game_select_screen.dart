@@ -26,7 +26,10 @@ class GameSelectScreen extends StatelessWidget {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 560),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 32,
+                ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -53,7 +56,7 @@ class GameSelectScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 14),
                     const Text(
-                      '기본 샘플 장면과 Suika 프로토타입을 같은 앱에서 선택해 실행할 수 있습니다.',
+                      '현재 플레이 가능한 스택 게임과 수박게임 모드를 선택해 실행할 수 있습니다.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 15,
@@ -64,24 +67,18 @@ class GameSelectScreen extends StatelessWidget {
                     const SizedBox(height: 28),
                     buildGameCard(
                       context: context,
-                      title: 'Basic Flame Game',
-                      description: '기존 샘플 Rectangle/Text 장면을 그대로 실행합니다.',
+                      title: '스택게임',
+                      description: '현재 구현된 적층 플레이를 바로 실행합니다.',
                       accentColor: const Color(0xFF1F6FEB),
-                      onTap: () => openGame(
-                        context,
-                        const BasicGameScreen(),
-                      ),
+                      onTap: () => openGame(context, const StackGameRoute()),
                     ),
                     const SizedBox(height: 16),
                     buildGameCard(
                       context: context,
-                      title: 'Suika Game',
-                      description: '드롭, 합체, 점수, 게임오버 루프가 들어간 Suika 모드입니다.',
+                      title: '수박게임',
+                      description: '같은 숫자를 합치며 점수를 올리는 수박게임 모드입니다.',
                       accentColor: const Color(0xFFF28C28),
-                      onTap: () => openGame(
-                        context,
-                        const SuikaGameRoute(),
-                      ),
+                      onTap: () => openGame(context, const SuikaGameRoute()),
                     ),
                   ],
                 ),
@@ -115,9 +112,7 @@ class GameSelectScreen extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          border: Border.all(
-            color: accentColor.withValues(alpha: 0.42),
-          ),
+          border: Border.all(color: accentColor.withValues(alpha: 0.42)),
           boxShadow: <BoxShadow>[
             BoxShadow(
               color: accentColor.withValues(alpha: 0.14),
@@ -164,10 +159,7 @@ class GameSelectScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              const Icon(
-                Icons.arrow_forward_rounded,
-                color: Color(0xFFF7F3E9),
-              ),
+              const Icon(Icons.arrow_forward_rounded, color: Color(0xFFF7F3E9)),
             ],
           ),
         ),
@@ -177,10 +169,8 @@ class GameSelectScreen extends StatelessWidget {
 
   /// 선택한 게임 화면으로 라우팅합니다.
   void openGame(BuildContext context, Widget screen) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => screen,
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (BuildContext context) => screen));
   }
 }
