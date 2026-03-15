@@ -8,6 +8,7 @@ class StoneSpec {
     required this.label,
     required this.radius,
     required this.color,
+    required this.assetPath,
     required this.score,
     required this.isDroppable,
   });
@@ -23,6 +24,9 @@ class StoneSpec {
 
   /// 단계별 시각 구분을 위한 대표 색상입니다.
   final Color color;
+
+  /// 스톤 이미지 에셋 경로입니다.
+  final String assetPath;
 
   /// 합체 성공 시 누적할 점수입니다.
   final int score;
@@ -40,6 +44,7 @@ class StoneCatalog {
       label: '1',
       radius: 0.56,
       color: Color(0xFFF7A541),
+      assetPath: 'assets/stones/stone_1.png',
       score: 2,
       isDroppable: true,
     ),
@@ -48,6 +53,7 @@ class StoneCatalog {
       label: '2',
       radius: 0.66,
       color: Color(0xFFFFC857),
+      assetPath: 'assets/stones/stone_2.png',
       score: 4,
       isDroppable: true,
     ),
@@ -56,6 +62,7 @@ class StoneCatalog {
       label: '3',
       radius: 0.76,
       color: Color(0xFFE9724C),
+      assetPath: 'assets/stones/stone_3.png',
       score: 8,
       isDroppable: true,
     ),
@@ -64,6 +71,7 @@ class StoneCatalog {
       label: '4',
       radius: 0.88,
       color: Color(0xFFC5283D),
+      assetPath: 'assets/stones/stone_4.png',
       score: 16,
       isDroppable: true,
     ),
@@ -72,6 +80,7 @@ class StoneCatalog {
       label: '5',
       radius: 1.00,
       color: Color(0xFF7D5BA6),
+      assetPath: 'assets/stones/stone_5.png',
       score: 32,
       isDroppable: false,
     ),
@@ -80,6 +89,7 @@ class StoneCatalog {
       label: '6',
       radius: 1.12,
       color: Color(0xFF3B8EA5),
+      assetPath: 'assets/stones/stone_6.png',
       score: 64,
       isDroppable: false,
     ),
@@ -88,6 +98,7 @@ class StoneCatalog {
       label: '7',
       radius: 1.26,
       color: Color(0xFF2A9D8F),
+      assetPath: 'assets/stones/stone_7.png',
       score: 128,
       isDroppable: false,
     ),
@@ -96,6 +107,7 @@ class StoneCatalog {
       label: '8',
       radius: 1.42,
       color: Color(0xFF588157),
+      assetPath: 'assets/stones/stone_8.png',
       score: 256,
       isDroppable: false,
     ),
@@ -104,6 +116,7 @@ class StoneCatalog {
       label: '9',
       radius: 1.58,
       color: Color(0xFF344E41),
+      assetPath: 'assets/stones/stone_9.png',
       score: 512,
       isDroppable: false,
     ),
@@ -111,7 +124,9 @@ class StoneCatalog {
 
   /// 첫 4단계만 드롭 풀로 노출합니다.
   static List<StoneSpec> droppableValues() {
-    return values.where((StoneSpec spec) => spec.isDroppable).toList(growable: false);
+    return values
+        .where((StoneSpec spec) => spec.isDroppable)
+        .toList(growable: false);
   }
 
   /// 다음 단계가 없으면 `null`을 반환합니다.

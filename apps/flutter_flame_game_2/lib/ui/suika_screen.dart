@@ -37,6 +37,7 @@ class SuikaScreenState extends State<SuikaScreen> {
 
   /// 새 세션 번호를 발급해 게임 위젯을 교체합니다.
   void restartGame() {
+    hudState.resetForNewGame();
     setState(() {
       sessionVersion += 1;
       currentGame = createGame();
@@ -241,23 +242,20 @@ class SuikaScreenState extends State<SuikaScreen> {
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                color: spec.color,
                 shape: BoxShape.circle,
+                color: const Color(0xFF201A17),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
-                    color: spec.color.withValues(alpha: 0.34),
+                    color: Colors.black.withValues(alpha: 0.18),
                     blurRadius: 18,
                   ),
                 ],
               ),
               alignment: Alignment.center,
-              child: Text(
-                spec.label,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFFFAF5EF),
-                ),
+              clipBehavior: Clip.antiAlias,
+              child: Padding(
+                padding: const EdgeInsets.all(3),
+                child: Image.asset(spec.assetPath, fit: BoxFit.contain),
               ),
             ),
           ],

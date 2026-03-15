@@ -5,6 +5,8 @@ import 'package:flame/events.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flame_forge2d/flame_forge2d.dart' as f2;
 import 'package:flutter/material.dart';
+import 'package:flutter_flame_game_2/game/suika/assets/png_processor.dart';
+import 'package:flutter_flame_game_2/game/suika/assets/stone_asset_data.dart';
 import 'package:flutter_flame_game_2/game/suika/stone_spec.dart';
 import 'package:flutter_flame_game_2/game/suika/suika_hud_state.dart';
 import 'package:flutter_flame_game_2/game/suika/suika_stone_body.dart';
@@ -111,8 +113,12 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   final Random random = Random();
   final List<StoneSpec> droppableCatalog = StoneCatalog.droppableValues();
   final Map<String, double> contactDurations = <String, double>{};
+  final Set<String> activeContactKeys = <String>{};
   final List<MergePair> pendingMerges = <MergePair>[];
   final Set<int> lockedStoneIds = <int>{};
+  final PngProcessor pngProcessor = PngProcessor();
+  final Map<String, StoneAssetData> stoneAssetMetadata =
+      <String, StoneAssetData>{};
 
   int stoneSequence = 0;
 
@@ -121,7 +127,13 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   Future<void> onLoad() async {
     camera.viewfinder.anchor = Anchor.topLeft;
     camera.viewfinder.position = Vector2.zero();
-    hudState.resetForNewGame();
+    stoneAssetMetadata.addAll(
+      await pngProcessor.prepareAssets(
+        StoneCatalog.values
+            .map((StoneSpec spec) => spec.assetPath)
+            .toList(growable: false),
+      ),
+    );
     await add(ScreenHitbox());
     await addAll(<Component>[
       BoundsBody(boardWidth: boardWidth, boardHeight: boardHeight),
@@ -188,12 +200,19 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
 
   /// 두 스톤의 접촉 시작을 안정 합체 후보로 기록합니다.
   void registerContactStart(SuikaStoneBody first, SuikaStoneBody second) {
-    return;
+    if (!canTrackMergeContact(first, second)) {
+      return;
+    }
+    final String key = pairKey(first.id, second.id);
+    activeContactKeys.add(key);
+    contactDurations.putIfAbsent(key, () => 0);
   }
 
   /// 두 스톤의 접촉 종료를 추적 상태에서 제거합니다.
   void registerContactEnd(SuikaStoneBody first, SuikaStoneBody second) {
-    return;
+    final String key = pairKey(first.id, second.id);
+    activeContactKeys.remove(key);
+    contactDurations.remove(key);
   }
 
   /// 게임 루프에서 합체 큐와 danger 판정을 순차적으로 처리합니다.
@@ -249,7 +268,7 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
         .query<SuikaStoneBody>()
         .where((SuikaStoneBody stone) => stone.isMounted)
         .toList(growable: false);
-    final Set<String> activeKeys = <String>{};
+    final Set<String> touchingKeys = <String>{...activeContactKeys};
 
     for (int i = 0; i < stones.length; i += 1) {
       final SuikaStoneBody first = stones[i];
@@ -258,17 +277,28 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
         if (!canTrackMergeContact(first, second)) {
           continue;
         }
-        if (!areStonesTouching(first, second)) {
+        if (!areStonesVisuallyTouching(first, second)) {
           continue;
         }
-        final String key = pairKey(first.id, second.id);
-        activeKeys.add(key);
-        contactDurations[key] = (contactDurations[key] ?? 0) + dt;
+        touchingKeys.add(pairKey(first.id, second.id));
       }
     }
 
+    final List<String> expiredKeys = <String>[];
+    for (final String key in touchingKeys) {
+      final MergePair? pair = resolvePairForKey(key);
+      if (pair == null) {
+        expiredKeys.add(key);
+        continue;
+      }
+      contactDurations[key] = (contactDurations[key] ?? 0) + dt;
+    }
+    for (final String key in expiredKeys) {
+      activeContactKeys.remove(key);
+      contactDurations.remove(key);
+    }
     contactDurations.removeWhere((String key, double value) {
-      return !activeKeys.contains(key);
+      return !touchingKeys.contains(key);
     });
 
     final List<String> readyKeys = <String>[];
@@ -302,13 +332,13 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     return true;
   }
 
-  /// 두 스톤이 실제로 닿아 있다고 볼 수 있는 거리인지 검사합니다.
-  bool areStonesTouching(SuikaStoneBody first, SuikaStoneBody second) {
+  /// 스프라이트 외곽 기준으로도 서로 닿아 보이는지 검사합니다.
+  bool areStonesVisuallyTouching(SuikaStoneBody first, SuikaStoneBody second) {
     final double distance = first.body.position.distanceTo(
       second.body.position,
     );
-    final double maxDistance = (first.spec.radius + second.spec.radius) * 1.05;
-    return distance <= maxDistance;
+    final double mergeDistance = first.mergeRadius + second.mergeRadius;
+    return distance <= mergeDistance;
   }
 
   /// 실제 월드 상태를 조회해 합체 가능한 바디 쌍을 복원합니다.
@@ -438,6 +468,13 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     return SuikaStoneBody(
       id: stoneSequence,
       spec: spec,
+      assetData:
+          stoneAssetMetadata[spec.assetPath] ??
+          StoneAssetData(
+            assetPath: spec.assetPath,
+            aspectRatio: 1.0,
+            densityMultiplier: 1.0,
+          ),
       spawnPosition: position,
       createdAt: elapsedTime,
       initialLinearVelocity: initialLinearVelocity,
