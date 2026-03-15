@@ -65,10 +65,8 @@ class SuikaScreenState extends State<SuikaScreen> {
     currentGame.moveSpawnerByRatio(ratio);
   }
 
-  /// 탭 위치를 기준으로 스포너를 옮기고 즉시 드롭합니다.
-  void handleTapDown(TapDownDetails details, double width) {
-    final double ratio = details.localPosition.dx / width;
-    currentGame.moveSpawnerByRatio(ratio);
+  /// 드래그 종료 시 현재 스포너 위치에서 스톤을 떨어뜨립니다.
+  void handlePanEnd() {
     currentGame.dropCurrentStone();
   }
 
@@ -159,14 +157,13 @@ class SuikaScreenState extends State<SuikaScreen> {
             borderRadius: BorderRadius.circular(28),
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTapDown: (TapDownDetails details) =>
-                  handleTapDown(details, width),
               onPanDown: (DragDownDetails details) {
                 moveSpawnerForLocalDx(details.localPosition.dx, width);
               },
               onPanUpdate: (DragUpdateDetails details) {
                 moveSpawnerForLocalDx(details.localPosition.dx, width);
               },
+              onPanEnd: (_) => handlePanEnd(),
               child: GameWidget<SuikaGame>(
                 key: ValueKey<int>(sessionVersion),
                 game: game,

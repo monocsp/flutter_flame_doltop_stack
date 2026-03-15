@@ -275,15 +275,11 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     if (!first.isMounted || !second.isMounted) {
       return false;
     }
-    if (elapsedTime - first.createdAt < 0.15 ||
-        elapsedTime - second.createdAt < 0.15) {
-      return false;
-    }
     return true;
   }
 
   /// 접촉 시간이 기준을 넘긴 쌍을 다음 틱 합체 큐로 옮깁니다.
-  void advanceContactTimers(double dt) {
+  void advanceContactTimers(double _) {
     final List<SuikaStoneBody> stones = world.children
         .query<SuikaStoneBody>()
         .where((SuikaStoneBody stone) => stone.isMounted)
@@ -294,10 +290,11 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
       final SuikaStoneBody first = stones[i];
       for (int j = i + 1; j < stones.length; j += 1) {
         final SuikaStoneBody second = stones[j];
-        if (!canTrackMergeContact(first, second)) {
+        if (!areStonesVisuallyTouching(first, second)) {
           continue;
         }
-        if (!areStonesVisuallyTouching(first, second)) {
+
+        if (!canTrackMergeContact(first, second)) {
           continue;
         }
         touchingKeys.add(pairKey(first.id, second.id));
