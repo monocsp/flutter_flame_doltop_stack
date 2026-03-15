@@ -74,7 +74,7 @@ class StoneCatalog {
     _StoneTemplate(
       stage: 0,
       label: '1',
-      radius: 0.56,
+      radius: 0.50,
       color: Color(0xFFF7A541),
       score: 2,
       isDroppable: true,
@@ -82,7 +82,7 @@ class StoneCatalog {
     _StoneTemplate(
       stage: 1,
       label: '2',
-      radius: 0.66,
+      radius: 0.62,
       color: Color(0xFFFFC857),
       score: 4,
       isDroppable: true,
@@ -98,7 +98,7 @@ class StoneCatalog {
     _StoneTemplate(
       stage: 3,
       label: '4',
-      radius: 0.88,
+      radius: 0.92,
       color: Color(0xFFC5283D),
       score: 16,
       isDroppable: true,
@@ -106,7 +106,7 @@ class StoneCatalog {
     _StoneTemplate(
       stage: 4,
       label: '5',
-      radius: 1.00,
+      radius: 1.10,
       color: Color(0xFF7D5BA6),
       score: 32,
       isDroppable: false,
@@ -114,7 +114,7 @@ class StoneCatalog {
     _StoneTemplate(
       stage: 5,
       label: '6',
-      radius: 1.12,
+      radius: 1.30,
       color: Color(0xFF3B8EA5),
       score: 64,
       isDroppable: false,
@@ -122,7 +122,7 @@ class StoneCatalog {
     _StoneTemplate(
       stage: 6,
       label: '7',
-      radius: 1.26,
+      radius: 1.52,
       color: Color(0xFF2A9D8F),
       score: 128,
       isDroppable: false,
@@ -130,7 +130,7 @@ class StoneCatalog {
     _StoneTemplate(
       stage: 7,
       label: '8',
-      radius: 1.42,
+      radius: 1.76,
       color: Color(0xFF588157),
       score: 256,
       isDroppable: false,
@@ -138,7 +138,7 @@ class StoneCatalog {
     _StoneTemplate(
       stage: 8,
       label: '9',
-      radius: 1.58,
+      radius: 2.02,
       color: Color(0xFF344E41),
       score: 512,
       isDroppable: false,

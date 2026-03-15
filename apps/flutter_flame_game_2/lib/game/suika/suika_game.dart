@@ -445,6 +445,13 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     final bool hasDangerStone = world.children.query<SuikaStoneBody>().any((
       SuikaStoneBody stone,
     ) {
+      final double stoneAge = elapsedTime - stone.createdAt;
+      if (stoneAge < 0.8) {
+        return false;
+      }
+      if (stone.body.linearVelocity.length > 1.2) {
+        return false;
+      }
       final double stoneTop = stone.body.position.y - stone.spec.radius;
       return stoneTop <= dangerLineY;
     });
