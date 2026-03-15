@@ -304,36 +304,27 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
       }
     }
 
-    final List<String> expiredKeys = <String>[];
+    final List<String> readyKeys = <String>[];
     for (final String key in touchingKeys) {
       final MergePair? pair = resolvePairForKey(key);
       if (pair == null) {
-        expiredKeys.add(key);
+        activeContactKeys.remove(key);
+        contactDurations.remove(key);
         continue;
       }
-      contactDurations[key] = (contactDurations[key] ?? 0) + dt;
-    }
-    for (final String key in expiredKeys) {
-      activeContactKeys.remove(key);
-      contactDurations.remove(key);
+      readyKeys.add(key);
     }
     contactDurations.removeWhere((String key, double value) {
       return !touchingKeys.contains(key);
     });
 
-    final List<String> readyKeys = <String>[];
-    contactDurations.forEach((String key, double value) {
-      if (value >= 0.08) {
-        readyKeys.add(key);
-      }
-    });
     for (final String key in readyKeys) {
       final MergePair? pair = resolvePairForKey(key);
       if (pair == null) {
-        contactDurations.remove(key);
         continue;
       }
       queueMerge(pair);
+      activeContactKeys.remove(key);
       contactDurations.remove(key);
     }
   }
@@ -436,7 +427,47 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
       );
       world.add(mergedStone);
       setScore(score + mergedSpec.score);
+      unawaited(playMergeHaptic(mergedSpec));
       releaseMergeLock(pair);
+    }
+  }
+
+  Future<void> playMergeHaptic(StoneSpec mergedSpec) async {
+    switch (mergedSpec.stage) {
+      case 1:
+        await HapticFeedback.selectionClick();
+        return;
+      case 2:
+        await HapticFeedback.lightImpact();
+        return;
+      case 3:
+        await HapticFeedback.lightImpact();
+        await Future<void>.delayed(const Duration(milliseconds: 24));
+        await HapticFeedback.selectionClick();
+        return;
+      case 4:
+        await HapticFeedback.mediumImpact();
+        return;
+      case 5:
+        await HapticFeedback.mediumImpact();
+        await Future<void>.delayed(const Duration(milliseconds: 28));
+        await HapticFeedback.lightImpact();
+        return;
+      case 6:
+        await HapticFeedback.mediumImpact();
+        await Future<void>.delayed(const Duration(milliseconds: 32));
+        await HapticFeedback.mediumImpact();
+        return;
+      case 7:
+        await HapticFeedback.heavyImpact();
+        return;
+      case 8:
+        await HapticFeedback.heavyImpact();
+        await Future<void>.delayed(const Duration(milliseconds: 36));
+        await HapticFeedback.mediumImpact();
+        return;
+      default:
+        await HapticFeedback.lightImpact();
     }
   }
 
