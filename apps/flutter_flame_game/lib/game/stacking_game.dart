@@ -145,6 +145,14 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     /// 게임 난이도 (기본값: hard — 모든 형태의 돌 등장)
     /// easy: 가로 긴 돌만, normal: 가로 + 정사각형, hard: 전체
     this.difficulty = DifficultyLevel.easy,
+
+    /// Flame 월드 내 루핑 배경 이미지 에셋 경로 목록
+    /// null이면 배경 이미지를 표시하지 않습니다.
+    this.backgroundAssetPaths,
+
+    /// Flame 월드 내 바닥 오버레이 에셋 경로
+    /// null이면 바닥 오버레이를 표시하지 않습니다.
+    this.backgroundBaseAssetPath,
   }) : _allAvailableAssets = List<String>.from(stoneSpriteAssets),
        _debugDrawCollisionShapes = debugDrawCollisionShapes,
        super(
@@ -165,6 +173,8 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
   final bool initialOnboarding;
   final int initialSpawnCount;
   final bool enableHaptic;
+  final List<String>? backgroundAssetPaths;
+  final String? backgroundBaseAssetPath;
   DifficultyLevel difficulty; // non-final: 다음 단계 전환 시 변경 가능
   bool _debugDrawCollisionShapes;
 
@@ -1215,28 +1225,24 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     final backgroundBottomY =
         _worldSize!.y - BoundaryComponent.floorBaseMarginFromBottom;
     try {
-      world.add(
-        LoopingBackgroundComponent(
-          assetPathsInOrder: const <String>[
-            'assets/background/1.png',
-            'assets/background/2.png',
-            'assets/background/3.png',
-            'assets/background/4.png',
-            'assets/background/5.png',
-            'assets/background/6.png',
-          ],
-          baseBottomY: backgroundBottomY,
-          worldWidth: _worldSize!.x,
-          bottomOverlayAssetPath: 'assets/background/base.png',
-          priority: -1000,
-        ),
-      );
+      if (backgroundAssetPaths != null && backgroundAssetPaths!.isNotEmpty) {
+        world.add(
+          LoopingBackgroundComponent(
+            assetPathsInOrder: backgroundAssetPaths!,
+            baseBottomY: backgroundBottomY,
+            worldWidth: _worldSize!.x,
+            bottomOverlayAssetPath: backgroundBaseAssetPath,
+            priority: -1000,
+          ),
+        );
+      }
 
       var curvedFloorAdded = false;
       try {
+        if (backgroundBaseAssetPath == null) throw Exception('no base asset');
         final profile = await _terrainProfileExtractor
             .extractTopSilhouetteFromAsset(
-              assetPath: 'assets/background/base.png',
+              assetPath: backgroundBaseAssetPath!,
               worldWidth: _worldSize!.x,
               baseBottomY: backgroundBottomY,
             );

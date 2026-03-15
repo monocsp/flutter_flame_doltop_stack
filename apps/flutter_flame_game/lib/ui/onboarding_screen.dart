@@ -7,7 +7,25 @@ import 'app_shell.dart';
 import 'widgets/particle_background.dart';
 
 class OnboardingScreen extends StatefulWidget {
-  const OnboardingScreen({super.key});
+  const OnboardingScreen({
+    super.key,
+    this.backgroundGradient,
+    this.backgroundWidget,
+    this.backgroundAssetPaths,
+    this.backgroundBaseAssetPath,
+  });
+
+  /// Flutter UI 레이어의 그라데이션 배경 (null이면 기본 그라데이션 사용)
+  final Gradient? backgroundGradient;
+
+  /// Flutter UI 레이어의 파티클/배경 위젯 (null이면 기본 ParticleBackground 사용)
+  final Widget? backgroundWidget;
+
+  /// Flame 월드 내 루핑 배경 이미지 에셋 경로 (null이면 Flame 배경 없음)
+  final List<String>? backgroundAssetPaths;
+
+  /// Flame 월드 내 바닥 오버레이 에셋 경로 (null이면 바닥 오버레이 없음)
+  final String? backgroundBaseAssetPath;
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -45,8 +63,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void _goToMainGame() {
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            const FlameScreen(),
+        pageBuilder: (context, animation, secondaryAnimation) => FlameScreen(
+          backgroundGradient: widget.backgroundGradient,
+          backgroundWidget: widget.backgroundWidget,
+          backgroundAssetPaths: widget.backgroundAssetPaths,
+          backgroundBaseAssetPath: widget.backgroundBaseAssetPath,
+        ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);
         },
@@ -87,24 +109,29 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // 1. 공통 그라데이션 배경
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                stops: [0.0, 0.3, 1.0],
-                colors: [
-                  Color(0xFF997FFF), // 상단 보라
-                  Color(0xFFF293FF), // 중상단 핑크
-                  Color(0xFFFFD582), // 하단 피치
-                ],
+          // 1. 배경 (그라데이션 또는 커스텀)
+          if (widget.backgroundGradient != null)
+            Container(
+              decoration: BoxDecoration(gradient: widget.backgroundGradient),
+            )
+          else
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: [0.0, 0.3, 1.0],
+                  colors: [
+                    Color(0xFF997FFF),
+                    Color(0xFFF293FF),
+                    Color(0xFFFFD582),
+                  ],
+                ),
               ),
             ),
-          ),
 
-          // 2. 파티클(별빛) 이펙트 배경
-          const ParticleBackground(),
+          // 2. 파티클 이펙트 배경 (커스텀 또는 기본)
+          widget.backgroundWidget ?? const ParticleBackground(),
 
           // 3. Flame 화면 (Step 2, Step 3에서만 돌과 바닥을 보여주기 위함)
           ValueListenableBuilder<int>(
@@ -121,6 +148,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   child: FlameScreen(
                     initialOnboarding: true,
                     onGameCreated: _onGameCreated,
+                    backgroundAssetPaths: widget.backgroundAssetPaths,
+                    backgroundBaseAssetPath: widget.backgroundBaseAssetPath,
                   ),
                 ),
               );
