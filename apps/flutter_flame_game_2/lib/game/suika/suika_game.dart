@@ -3,22 +3,71 @@ import 'dart:math';
 import 'package:flame/components.dart';
 import 'package:flame/events.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
+import 'package:flame_forge2d/flame_forge2d.dart' as f2;
 import 'package:flutter/material.dart';
 import 'package:flutter_flame_game_2/game/suika/stone_spec.dart';
 import 'package:flutter_flame_game_2/game/suika/suika_hud_state.dart';
 import 'package:flutter_flame_game_2/game/suika/suika_stone_body.dart';
 
+/// 적층 안정성을 위해 고정 스텝으로 Forge2D를 구동합니다.
+class FixedStepForge2DWorld extends Forge2DWorld {
+  FixedStepForge2DWorld({
+    required this.fixedStep,
+    required this.maxSubSteps,
+    required this.velocityIterations,
+    required this.positionIterations,
+    super.gravity,
+  });
+
+  final double fixedStep;
+  final int maxSubSteps;
+  final int velocityIterations;
+  final int positionIterations;
+
+  double _accumulator = 0.0;
+
+  @override
+  void update(double dt) {
+    f2.velocityIterations = velocityIterations;
+    f2.positionIterations = positionIterations;
+
+    _accumulator += dt.clamp(0.0, fixedStep * maxSubSteps);
+    var steps = 0;
+    while (_accumulator >= fixedStep && steps < maxSubSteps) {
+      physicsWorld.stepDt(fixedStep);
+      _accumulator -= fixedStep;
+      steps++;
+    }
+
+    if (steps >= maxSubSteps) {
+      _accumulator = 0.0;
+    }
+  }
+}
+
 /// Suika 규칙에 맞는 드롭, 합체, 게임오버 루프를 제공합니다.
 class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
+  static const double boardWidthUnits = 10.2;
+  static const double boardHeightUnits = 12.4;
+  static const double boardAspectRatio = boardWidthUnits / boardHeightUnits;
+  static final Vector2 worldGravity = Vector2(0, 36);
+
   /// HUD 상태와 보드 크기를 받아 게임 세션을 초기화합니다.
   SuikaGame({
     required this.hudState,
     required this.boardWidth,
     required this.boardHeight,
   }) : super(
-          gravity: Vector2(0, 24),
-          zoom: 38,
-        );
+         world: FixedStepForge2DWorld(
+           fixedStep: 1 / 60,
+           maxSubSteps: 6,
+           velocityIterations: 10,
+           positionIterations: 14,
+           gravity: worldGravity,
+         ),
+         gravity: worldGravity,
+         zoom: 1,
+       );
 
   /// Flutter HUD와 공유할 상태 객체입니다.
   final SuikaHudState hudState;
@@ -30,10 +79,10 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   final double boardHeight;
 
   /// 화면 상단 위험선 높이를 반환합니다.
-  double get dangerLineY => 2.2;
+  double get dangerLineY => 2.25;
 
   /// 실제 스톤이 스폰되는 높이를 반환합니다.
-  double get spawnY => 1.5;
+  double get spawnY => 1.4;
 
   /// 현재 선택된 드롭 위치입니다.
   double spawnX = 5;
@@ -76,15 +125,21 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     await add(ScreenHitbox());
     await addAll(<Component>[
       BoundsBody(boardWidth: boardWidth, boardHeight: boardHeight),
-      DangerLineComponent(
-        boardWidth: boardWidth,
-        dangerLineY: dangerLineY,
-      ),
+      DangerLineComponent(boardWidth: boardWidth, dangerLineY: dangerLineY),
     ]);
     currentStone = pickRandomDroppableStone();
     nextStone = pickRandomDroppableStone();
     hudState.setNextStone(nextStone);
     spawnX = boardWidth / 2;
+  }
+
+  @override
+  void onGameResize(Vector2 size) {
+    super.onGameResize(size);
+    if (size.x <= 0 || size.y <= 0) {
+      return;
+    }
+    camera.viewfinder.zoom = min(size.x / boardWidth, size.y / boardHeight);
   }
 
   /// 입력 좌표를 월드 스포너 위치로 변환합니다.
@@ -133,15 +188,12 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
 
   /// 두 스톤의 접촉 시작을 안정 합체 후보로 기록합니다.
   void registerContactStart(SuikaStoneBody first, SuikaStoneBody second) {
-    if (!isMergeCandidate(first, second)) {
-      return;
-    }
-    contactDurations.putIfAbsent(pairKey(first.id, second.id), () => 0);
+    return;
   }
 
   /// 두 스톤의 접촉 종료를 추적 상태에서 제거합니다.
   void registerContactEnd(SuikaStoneBody first, SuikaStoneBody second) {
-    contactDurations.remove(pairKey(first.id, second.id));
+    return;
   }
 
   /// 게임 루프에서 합체 큐와 danger 판정을 순차적으로 처리합니다.
@@ -174,7 +226,8 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     if (StoneCatalog.nextOf(first.spec) == null) {
       return false;
     }
-    if (lockedStoneIds.contains(first.id) || lockedStoneIds.contains(second.id)) {
+    if (lockedStoneIds.contains(first.id) ||
+        lockedStoneIds.contains(second.id)) {
       return false;
     }
     if (first.isQueuedForMerge || second.isQueuedForMerge) {
@@ -183,7 +236,8 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     if (!first.isMounted || !second.isMounted) {
       return false;
     }
-    if (elapsedTime - first.createdAt < 0.15 || elapsedTime - second.createdAt < 0.15) {
+    if (elapsedTime - first.createdAt < 0.15 ||
+        elapsedTime - second.createdAt < 0.15) {
       return false;
     }
     return true;
@@ -191,11 +245,35 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
 
   /// 접촉 시간이 기준을 넘긴 쌍을 다음 틱 합체 큐로 옮깁니다.
   void advanceContactTimers(double dt) {
+    final List<SuikaStoneBody> stones = world.children
+        .query<SuikaStoneBody>()
+        .where((SuikaStoneBody stone) => stone.isMounted)
+        .toList(growable: false);
+    final Set<String> activeKeys = <String>{};
+
+    for (int i = 0; i < stones.length; i += 1) {
+      final SuikaStoneBody first = stones[i];
+      for (int j = i + 1; j < stones.length; j += 1) {
+        final SuikaStoneBody second = stones[j];
+        if (!canTrackMergeContact(first, second)) {
+          continue;
+        }
+        if (!areStonesTouching(first, second)) {
+          continue;
+        }
+        final String key = pairKey(first.id, second.id);
+        activeKeys.add(key);
+        contactDurations[key] = (contactDurations[key] ?? 0) + dt;
+      }
+    }
+
+    contactDurations.removeWhere((String key, double value) {
+      return !activeKeys.contains(key);
+    });
+
     final List<String> readyKeys = <String>[];
     contactDurations.forEach((String key, double value) {
-      final double nextValue = value + dt;
-      contactDurations[key] = nextValue;
-      if (nextValue >= 0.1) {
+      if (value >= 0.08) {
         readyKeys.add(key);
       }
     });
@@ -208,6 +286,29 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
       queueMerge(pair);
       contactDurations.remove(key);
     }
+  }
+
+  /// 합체용 접촉 추적을 시작해도 되는 기본 조건만 확인합니다.
+  bool canTrackMergeContact(SuikaStoneBody first, SuikaStoneBody second) {
+    if (first.spec.stage != second.spec.stage) {
+      return false;
+    }
+    if (StoneCatalog.nextOf(first.spec) == null) {
+      return false;
+    }
+    if (!first.isMounted || !second.isMounted) {
+      return false;
+    }
+    return true;
+  }
+
+  /// 두 스톤이 실제로 닿아 있다고 볼 수 있는 거리인지 검사합니다.
+  bool areStonesTouching(SuikaStoneBody first, SuikaStoneBody second) {
+    final double distance = first.body.position.distanceTo(
+      second.body.position,
+    );
+    final double maxDistance = (first.spec.radius + second.spec.radius) * 1.05;
+    return distance <= maxDistance;
   }
 
   /// 실제 월드 상태를 조회해 합체 가능한 바디 쌍을 복원합니다.
@@ -270,11 +371,15 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
         (pair.first.body.position.x + pair.second.body.position.x) / 2,
         (pair.first.body.position.y + pair.second.body.position.y) / 2,
       );
+      final Vector2 mergedVelocity =
+          (pair.first.body.linearVelocity + pair.second.body.linearVelocity) *
+          0.35;
       pair.first.removeFromParent();
       pair.second.removeFromParent();
       final SuikaStoneBody mergedStone = createStoneBody(
         spec: mergedSpec,
         position: mergedPosition,
+        initialLinearVelocity: mergedVelocity,
       );
       world.add(mergedStone);
       setScore(score + mergedSpec.score);
@@ -284,7 +389,9 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
 
   /// danger line 위반을 1초 연속 유지한 경우에만 종료합니다.
   void updateDangerState(double dt) {
-    final bool hasDangerStone = world.children.query<SuikaStoneBody>().any((SuikaStoneBody stone) {
+    final bool hasDangerStone = world.children.query<SuikaStoneBody>().any((
+      SuikaStoneBody stone,
+    ) {
       final double stoneTop = stone.body.position.y - stone.spec.radius;
       return stoneTop <= dangerLineY;
     });
@@ -325,6 +432,7 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   SuikaStoneBody createStoneBody({
     required StoneSpec spec,
     required Vector2 position,
+    Vector2? initialLinearVelocity,
   }) {
     stoneSequence += 1;
     return SuikaStoneBody(
@@ -332,6 +440,7 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
       spec: spec,
       spawnPosition: position,
       createdAt: elapsedTime,
+      initialLinearVelocity: initialLinearVelocity,
     );
   }
 
@@ -353,7 +462,9 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   /// 현재 스톤의 스포너 가이드를 보드 상단에 그립니다.
   void renderSpawnerGuide(Canvas canvas) {
     final Vector2 topLeft = camera.localToGlobal(Vector2(0.7, dangerLineY));
-    final Vector2 topRight = camera.localToGlobal(Vector2(boardWidth - 0.7, dangerLineY));
+    final Vector2 topRight = camera.localToGlobal(
+      Vector2(boardWidth - 0.7, dangerLineY),
+    );
     final Vector2 spawnCenter = camera.localToGlobal(Vector2(spawnX, spawnY));
     final double previewRadius = currentStone.radius * camera.viewfinder.zoom;
     final Paint linePaint = Paint()
@@ -372,16 +483,22 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
       previewRadius,
       previewPaint,
     );
+    canvas.drawLine(
+      Offset(spawnCenter.x, 0),
+      Offset(spawnCenter.x, spawnCenter.y - previewRadius - 6),
+      linePaint..strokeWidth = 1.5,
+    );
   }
 }
 
 /// 월드 외곽과 바닥을 박스 경계로 구성합니다.
 class BoundsBody extends BodyComponent<SuikaGame> {
+  static const double wallThickness = 0.44;
+  static const double floorThickness = 0.52;
+  static const double floorMarginFromBottom = 0.18;
+
   /// 박스형 Suika 플레이필드를 생성합니다.
-  BoundsBody({
-    required this.boardWidth,
-    required this.boardHeight,
-  });
+  BoundsBody({required this.boardWidth, required this.boardHeight});
 
   /// 플레이필드 가로 길이입니다.
   final double boardWidth;
@@ -396,19 +513,43 @@ class BoundsBody extends BodyComponent<SuikaGame> {
       type: BodyType.static,
     );
     final Body createdBody = world.createBody(bodyDef);
+    final double floorCenterY =
+        boardHeight - floorMarginFromBottom - (floorThickness / 2);
+    final double wallCenterY = floorCenterY / 2;
     createdBody.createFixture(
       FixtureDef(
-        PolygonShape()..setAsBox(0.35, boardHeight / 2, Vector2(0, boardHeight / 2), 0),
+        PolygonShape()..setAsBox(
+          wallThickness / 2,
+          floorCenterY / 2,
+          Vector2(wallThickness / 2, wallCenterY),
+          0,
+        ),
+        friction: 0.18,
+        restitution: 0.0,
       ),
     );
     createdBody.createFixture(
       FixtureDef(
-        PolygonShape()..setAsBox(0.35, boardHeight / 2, Vector2(boardWidth, boardHeight / 2), 0),
+        PolygonShape()..setAsBox(
+          wallThickness / 2,
+          floorCenterY / 2,
+          Vector2(boardWidth - (wallThickness / 2), wallCenterY),
+          0,
+        ),
+        friction: 0.18,
+        restitution: 0.0,
       ),
     );
     createdBody.createFixture(
       FixtureDef(
-        PolygonShape()..setAsBox(boardWidth / 2, 0.4, Vector2(boardWidth / 2, boardHeight), 0),
+        PolygonShape()..setAsBox(
+          (boardWidth - wallThickness) / 2,
+          floorThickness / 2,
+          Vector2(boardWidth / 2, floorCenterY),
+          0,
+        ),
+        friction: 0.26,
+        restitution: 0.0,
       ),
     );
     return createdBody;
@@ -416,21 +557,32 @@ class BoundsBody extends BodyComponent<SuikaGame> {
 
   @override
   void render(Canvas canvas) {
+    final double floorTopY =
+        boardHeight - floorMarginFromBottom - floorThickness;
     final Paint framePaint = Paint()
       ..color = const Color(0xFFDDB892)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.12;
     final Paint floorPaint = Paint()
-      ..color = const Color(0xFF7F5539).withValues(alpha: 0.35)
+      ..color = const Color(0xFF7F5539).withValues(alpha: 0.44)
+      ..style = PaintingStyle.fill;
+    final Paint belowFloorPaint = Paint()
+      ..color = const Color(0xFF281E1A).withValues(alpha: 0.72)
       ..style = PaintingStyle.fill;
 
+    canvas.drawRect(Rect.fromLTWH(0, 0, boardWidth, boardHeight), framePaint);
     canvas.drawRect(
-      Rect.fromLTWH(0, 0, boardWidth, boardHeight),
-      framePaint,
+      Rect.fromLTWH(0, floorTopY, boardWidth, floorThickness),
+      floorPaint,
     );
     canvas.drawRect(
-      Rect.fromLTWH(0, boardHeight - 0.7, boardWidth, 0.7),
-      floorPaint,
+      Rect.fromLTWH(
+        0,
+        floorTopY + floorThickness,
+        boardWidth,
+        floorMarginFromBottom,
+      ),
+      belowFloorPaint,
     );
   }
 }
@@ -438,10 +590,7 @@ class BoundsBody extends BodyComponent<SuikaGame> {
 /// danger line 위치를 화면에 표시해 종료 조건을 안내합니다.
 class DangerLineComponent extends PositionComponent {
   /// 상단 위험선을 얇은 선으로 표현합니다.
-  DangerLineComponent({
-    required this.boardWidth,
-    required this.dangerLineY,
-  }) {
+  DangerLineComponent({required this.boardWidth, required this.dangerLineY}) {
     position = Vector2(0, dangerLineY);
     size = Vector2(boardWidth, 0.02);
     anchor = Anchor.topLeft;
@@ -465,10 +614,7 @@ class DangerLineComponent extends PositionComponent {
 /// 안정 접촉이 끝난 두 스톤을 합체 큐에 담습니다.
 class MergePair {
   /// 합체 대상 두 바디를 함께 보관합니다.
-  const MergePair({
-    required this.first,
-    required this.second,
-  });
+  const MergePair({required this.first, required this.second});
 
   /// 첫 번째 스톤입니다.
   final SuikaStoneBody first;

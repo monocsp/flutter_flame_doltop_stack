@@ -19,52 +19,44 @@ class SuikaScreenState extends State<SuikaScreen> {
   SuikaScreenState();
 
   late final SuikaHudState hudState;
-  late final ValueNotifier<int> sessionVersion;
-  late final ValueNotifier<SuikaGame?> currentGame;
+  late SuikaGame currentGame;
+  int sessionVersion = 0;
 
   @override
   void initState() {
     super.initState();
     hudState = SuikaHudState();
-    sessionVersion = ValueNotifier<int>(0);
-    currentGame = ValueNotifier<SuikaGame?>(null);
+    currentGame = createGame();
   }
 
   @override
   void dispose() {
-    currentGame.dispose();
-    sessionVersion.dispose();
     hudState.dispose();
     super.dispose();
   }
 
   /// 새 세션 번호를 발급해 게임 위젯을 교체합니다.
   void restartGame() {
-    sessionVersion.value = sessionVersion.value + 1;
+    setState(() {
+      sessionVersion += 1;
+      currentGame = createGame();
+    });
   }
 
-  /// 입력 위치를 비율로 바꿔 스포너를 이동시킵니다.
-  void handlePan(BuildContext context, DragUpdateDetails details) {
-    final Size size = MediaQuery.sizeOf(context);
-    final double ratio = details.localPosition.dx / size.width;
-    currentGame.value?.moveSpawnerByRatio(ratio);
+  /// 입력 위치를 보드 가로 비율로 바꿔 스포너를 이동시킵니다.
+  void moveSpawnerForLocalDx(double localDx, double width) {
+    if (width <= 0) {
+      return;
+    }
+    final double ratio = localDx / width;
+    currentGame.moveSpawnerByRatio(ratio);
   }
 
   /// 탭 위치를 기준으로 스포너를 옮기고 즉시 드롭합니다.
-  void handleTap(BuildContext context, TapUpDetails details) {
-    final Size size = MediaQuery.sizeOf(context);
-    final double ratio = details.localPosition.dx / size.width;
-    final SuikaGame? game = currentGame.value;
-    if (game == null) {
-      return;
-    }
-    game.moveSpawnerByRatio(ratio);
-    game.dropCurrentStone();
-  }
-
-  /// 드래그 종료 시 현재 위치에서 스톤을 떨어뜨립니다.
-  void handlePanEnd() {
-    currentGame.value?.dropCurrentStone();
+  void handleTapDown(TapDownDetails details, double width) {
+    final double ratio = details.localPosition.dx / width;
+    currentGame.moveSpawnerByRatio(ratio);
+    currentGame.dropCurrentStone();
   }
 
   @override
@@ -83,87 +75,105 @@ class SuikaScreenState extends State<SuikaScreen> {
           ),
         ),
         child: SafeArea(
-          child: LayoutBuilder(
-            builder: (BuildContext context, BoxConstraints constraints) {
-              return ValueListenableBuilder<int>(
-                valueListenable: sessionVersion,
-                builder: (BuildContext context, int version, Widget? child) {
-                  final SuikaGame game = createGame(
-                    width: constraints.maxWidth,
-                    height: constraints.maxHeight,
-                  );
-                  currentGame.value = game;
-                  return Stack(
-                    children: <Widget>[
-                      buildInteractiveGameLayer(context, game),
-                      buildHud(),
-                      buildGameOverOverlay(),
-                    ],
-                  );
-                },
-              );
-            },
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: Column(
+              children: <Widget>[
+                buildHud(),
+                const SizedBox(height: 14),
+                Expanded(
+                  child: Center(
+                    child: AspectRatio(
+                      aspectRatio: SuikaGame.boardAspectRatio,
+                      child: Stack(
+                        children: <Widget>[
+                          buildInteractiveGameLayer(currentGame),
+                          buildGameOverOverlay(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// 화면 비율에 맞춰 새 게임 인스턴스를 만듭니다.
-  SuikaGame createGame({
-    required double width,
-    required double height,
-  }) {
-    final double worldWidth = 10.2;
-    final double worldHeight = worldWidth * (height / width).clamp(1.4, 2.0);
+  /// Suika 전용 고정 월드 크기로 새 게임 인스턴스를 만듭니다.
+  SuikaGame createGame() {
     return SuikaGame(
       hudState: hudState,
-      boardWidth: worldWidth,
-      boardHeight: worldHeight,
+      boardWidth: SuikaGame.boardWidthUnits,
+      boardHeight: SuikaGame.boardHeightUnits,
     );
   }
 
   /// Flutter 입력을 우선 받아 드롭 조작을 단순화합니다.
-  Widget buildInteractiveGameLayer(BuildContext context, SuikaGame game) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapUp: (TapUpDetails details) => handleTap(context, details),
-      onPanDown: (DragDownDetails details) {
-        final double ratio = details.localPosition.dx / MediaQuery.sizeOf(context).width;
-        game.moveSpawnerByRatio(ratio);
+  Widget buildInteractiveGameLayer(SuikaGame game) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double width = constraints.maxWidth;
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xFF171A1F),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: const Color(0xFFF7F3E9).withValues(alpha: 0.16),
+            ),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.24),
+                blurRadius: 26,
+                offset: const Offset(0, 16),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (TapDownDetails details) =>
+                  handleTapDown(details, width),
+              onPanDown: (DragDownDetails details) {
+                moveSpawnerForLocalDx(details.localPosition.dx, width);
+              },
+              onPanUpdate: (DragUpdateDetails details) {
+                moveSpawnerForLocalDx(details.localPosition.dx, width);
+              },
+              child: GameWidget<SuikaGame>(
+                key: ValueKey<int>(sessionVersion),
+                game: game,
+              ),
+            ),
+          ),
+        );
       },
-      onPanUpdate: (DragUpdateDetails details) => handlePan(context, details),
-      onPanEnd: (DragEndDetails details) => handlePanEnd(),
-      child: GameWidget<SuikaGame>(game: game),
     );
   }
 
   /// 점수, 미리보기, 제어 버튼을 상단 HUD로 제공합니다.
   Widget buildHud() {
-    return Align(
-      alignment: Alignment.topCenter,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFF11151C).withValues(alpha: 0.54),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFFF7F3E9).withValues(alpha: 0.14),
+        ),
+      ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xFF11151C).withValues(alpha: 0.54),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: const Color(0xFFF7F3E9).withValues(alpha: 0.14),
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-            child: Row(
-              children: <Widget>[
-                Expanded(child: buildScoreColumn()),
-                const SizedBox(width: 12),
-                buildNextStonePreview(),
-                const SizedBox(width: 12),
-                buildActionButtons(),
-              ],
-            ),
-          ),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        child: Row(
+          children: <Widget>[
+            Expanded(child: buildScoreColumn()),
+            const SizedBox(width: 12),
+            buildNextStonePreview(),
+            const SizedBox(width: 12),
+            buildActionButtons(),
+          ],
         ),
       ),
     );
@@ -190,10 +200,7 @@ class SuikaScreenState extends State<SuikaScreen> {
           builder: (BuildContext context, int value, Widget? child) {
             return Text(
               'Score $value',
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-              ),
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
             );
           },
         ),
@@ -203,10 +210,7 @@ class SuikaScreenState extends State<SuikaScreen> {
           builder: (BuildContext context, int value, Widget? child) {
             return Text(
               'Best $value',
-              style: const TextStyle(
-                fontSize: 14,
-                color: Color(0xFFD9CAB3),
-              ),
+              style: const TextStyle(fontSize: 14, color: Color(0xFFD9CAB3)),
             );
           },
         ),
@@ -267,16 +271,13 @@ class SuikaScreenState extends State<SuikaScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        TextButton(
-          onPressed: restartGame,
-          child: const Text('Restart'),
-        ),
+        TextButton(onPressed: restartGame, child: const Text('Restart')),
         const SizedBox(height: 4),
         ValueListenableBuilder<bool>(
           valueListenable: hudState.isPaused,
           builder: (BuildContext context, bool isPaused, Widget? child) {
             return TextButton(
-              onPressed: () => currentGame.value?.togglePause(),
+              onPressed: () => currentGame.togglePause(),
               child: Text(isPaused ? 'Resume' : 'Pause'),
             );
           },
@@ -305,7 +306,10 @@ class SuikaScreenState extends State<SuikaScreen> {
                   ),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 28,
+                    vertical: 24,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
@@ -319,15 +323,16 @@ class SuikaScreenState extends State<SuikaScreen> {
                       const SizedBox(height: 8),
                       ValueListenableBuilder<int>(
                         valueListenable: hudState.score,
-                        builder: (BuildContext context, int value, Widget? child) {
-                          return Text(
-                            'Final Score $value',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              color: Color(0xFFD9CAB3),
-                            ),
-                          );
-                        },
+                        builder:
+                            (BuildContext context, int value, Widget? child) {
+                              return Text(
+                                'Final Score $value',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: Color(0xFFD9CAB3),
+                                ),
+                              );
+                            },
                       ),
                       const SizedBox(height: 18),
                       FilledButton(
