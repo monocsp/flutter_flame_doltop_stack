@@ -119,23 +119,17 @@ class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
 
   @override
   void render(Canvas canvas) {
-    if (contactIndicator == StoneContactIndicator.none) {
+    if (contactIndicator != StoneContactIndicator.mergeReady) {
       return;
     }
 
-    final Color strokeColor = contactIndicator == StoneContactIndicator.mergeReady
-        ? const Color(0xFFFFE082)
-        : const Color(0xE6FDF7ED);
+    final Color strokeColor = const Color(0xFFFFE082);
     final Paint outlinePaint = Paint()
       ..color = strokeColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = contactIndicator == StoneContactIndicator.mergeReady
-          ? 0.10
-          : 0.07;
+      ..strokeWidth = 0.10;
     final Paint glowPaint = Paint()
-      ..color = strokeColor.withValues(
-        alpha: contactIndicator == StoneContactIndicator.mergeReady ? 0.26 : 0.18,
-      )
+      ..color = strokeColor.withValues(alpha: 0.26)
       ..style = PaintingStyle.stroke
       ..strokeWidth = outlinePaint.strokeWidth * 1.9
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8);
