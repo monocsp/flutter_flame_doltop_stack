@@ -6,9 +6,12 @@ class SuikaHudState {
   /// HUD에 필요한 노티파이어를 한 곳에 모읍니다.
   SuikaHudState({
     int initialBestScore = 0,
+    List<StoneSpec>? initialCatalog,
   }) : score = ValueNotifier<int>(0),
        bestScore = ValueNotifier<int>(initialBestScore),
-       nextStone = ValueNotifier<StoneSpec>(StoneCatalog.droppableValues().first),
+       nextStone = ValueNotifier<StoneSpec>(
+         (initialCatalog ?? StoneCatalog.droppableValues()).first,
+       ),
        isPaused = ValueNotifier<bool>(false),
        isGameOver = ValueNotifier<bool>(false);
 

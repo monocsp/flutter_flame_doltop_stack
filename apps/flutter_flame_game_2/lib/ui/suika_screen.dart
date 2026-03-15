@@ -7,7 +7,17 @@ import 'package:flutter_flame_game_2/game/suika/suika_hud_state.dart';
 /// Suika 게임과 Flutter HUD를 한 화면에 조합합니다.
 class SuikaScreen extends StatefulWidget {
   /// Suika 메인 화면을 생성합니다.
-  const SuikaScreen({super.key});
+  // ignore: prefer_const_constructors_in_immutables
+  SuikaScreen({
+    super.key,
+    this.stoneAssetPaths = StoneCatalog.defaultAssetPaths,
+  }) : assert(
+         stoneAssetPaths.length == StoneCatalog.stageCount,
+         'Suika stone image paths must contain exactly 9 entries.',
+       );
+
+  /// 1~9 단계에 대응하는 스톤 이미지 경로 목록입니다.
+  final List<String> stoneAssetPaths;
 
   @override
   State<SuikaScreen> createState() => SuikaScreenState();
@@ -25,7 +35,9 @@ class SuikaScreenState extends State<SuikaScreen> {
   @override
   void initState() {
     super.initState();
-    hudState = SuikaHudState();
+    hudState = SuikaHudState(
+      initialCatalog: StoneCatalog.droppableValues(widget.stoneAssetPaths),
+    );
     currentGame = createGame();
   }
 
@@ -77,19 +89,23 @@ class SuikaScreenState extends State<SuikaScreen> {
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
             child: Column(
               children: <Widget>[
                 buildHud(),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Expanded(
-                  child: Center(
-                    child: SizedBox.expand(
-                      child: FittedBox(
-                        fit: BoxFit.contain,
+                  child: LayoutBuilder(
+                    builder: (BuildContext context, BoxConstraints constraints) {
+                      final double boardWidth = constraints.maxWidth;
+                      final double boardHeight =
+                          boardWidth / SuikaGame.boardAspectRatio;
+
+                      return Align(
+                        alignment: Alignment.topCenter,
                         child: SizedBox(
-                          width: 440,
-                          height: 440 / SuikaGame.boardAspectRatio,
+                          width: boardWidth,
+                          height: boardHeight,
                           child: Stack(
                             children: <Widget>[
                               buildInteractiveGameLayer(currentGame),
@@ -97,8 +113,8 @@ class SuikaScreenState extends State<SuikaScreen> {
                             ],
                           ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -115,6 +131,7 @@ class SuikaScreenState extends State<SuikaScreen> {
       hudState: hudState,
       boardWidth: SuikaGame.boardWidthUnits,
       boardHeight: SuikaGame.boardHeightUnits,
+      stoneAssetPaths: widget.stoneAssetPaths,
     );
   }
 
@@ -166,13 +183,13 @@ class SuikaScreenState extends State<SuikaScreen> {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: const Color(0xFF11151C).withValues(alpha: 0.54),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: const Color(0xFFF7F3E9).withValues(alpha: 0.14),
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
@@ -214,13 +231,13 @@ class SuikaScreenState extends State<SuikaScreen> {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: const Color(0xFF0C1016).withValues(alpha: 0.64),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: const Color(0xFFF7F3E9).withValues(alpha: 0.08),
           ),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -228,17 +245,17 @@ class SuikaScreenState extends State<SuikaScreen> {
               Text(
                 label,
                 style: const TextStyle(
-                  fontSize: 10,
+                  fontSize: 9,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.2,
                   color: Color(0xFFF7C59F),
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 3),
               Text(
                 value,
                 style: const TextStyle(
-                  fontSize: 20,
+                  fontSize: 18,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -269,10 +286,10 @@ class SuikaScreenState extends State<SuikaScreen> {
             const SizedBox(height: 6),
             AnimatedContainer(
               duration: const Duration(milliseconds: 220),
-              width: 58,
-              height: 58,
+              width: 54,
+              height: 54,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(16),
                 color: const Color(0xFF201A17),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
@@ -297,15 +314,15 @@ class SuikaScreenState extends State<SuikaScreen> {
   /// 재시작 버튼만 제공합니다.
   Widget buildRestartButton() {
     return SizedBox(
-      height: 58,
+      height: 54,
       child: FilledButton(
         onPressed: restartGame,
         style: FilledButton.styleFrom(
           backgroundColor: const Color(0xFFE76F51),
           foregroundColor: const Color(0xFFFDF7ED),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(16),
           ),
         ),
         child: const Text(

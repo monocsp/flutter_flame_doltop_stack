@@ -53,7 +53,7 @@ class FixedStepForge2DWorld extends Forge2DWorld {
 /// Suika 규칙에 맞는 드롭, 합체, 게임오버 루프를 제공합니다.
 class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   static const double boardWidthUnits = 10.2;
-  static const double boardHeightUnits = 12.4;
+  static const double boardHeightUnits = 16.4;
   static const double boardAspectRatio = boardWidthUnits / boardHeightUnits;
   static final Vector2 worldGravity = Vector2(0, 36);
 
@@ -62,7 +62,14 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     required this.hudState,
     required this.boardWidth,
     required this.boardHeight,
-  }) : super(
+    List<String>? stoneAssetPaths,
+  }) : stoneCatalog = StoneCatalog.buildValues(stoneAssetPaths),
+       assert(
+         (stoneAssetPaths ?? StoneCatalog.defaultAssetPaths).length ==
+             StoneCatalog.stageCount,
+         'Suika stone image paths must contain exactly 9 entries.',
+       ),
+       super(
          world: FixedStepForge2DWorld(
            fixedStep: 1 / 60,
            maxSubSteps: 6,
@@ -82,6 +89,9 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
 
   /// 월드 기준 세로 크기입니다.
   final double boardHeight;
+
+  /// 현재 세션의 9단계 스톤 카탈로그입니다.
+  final List<StoneSpec> stoneCatalog;
 
   /// 화면 상단 위험선 높이를 반환합니다.
   double get dangerLineY => 2.25;
@@ -114,7 +124,9 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   late StoneSpec nextStone;
 
   final Random random = Random();
-  final List<StoneSpec> droppableCatalog = StoneCatalog.droppableValues();
+  late final List<StoneSpec> droppableCatalog = stoneCatalog
+      .where((StoneSpec spec) => spec.isDroppable)
+      .toList(growable: false);
   final Map<String, double> contactDurations = <String, double>{};
   final Set<String> activeContactKeys = <String>{};
   final List<MergePair> pendingMerges = <MergePair>[];
@@ -133,12 +145,12 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     camera.viewfinder.position = Vector2.zero();
     stoneAssetMetadata.addAll(
       await pngProcessor.prepareAssets(
-        StoneCatalog.values
+        stoneCatalog
             .map((StoneSpec spec) => spec.assetPath)
             .toList(growable: false),
       ),
     );
-    for (final StoneSpec spec in StoneCatalog.values) {
+    for (final StoneSpec spec in stoneCatalog) {
       final ByteData data = await rootBundle.load(spec.assetPath);
       previewImages[spec.assetPath] = await decodePreviewImage(data);
     }
@@ -250,7 +262,7 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     if (first.spec.stage != second.spec.stage) {
       return false;
     }
-    if (StoneCatalog.nextOf(first.spec) == null) {
+    if (StoneCatalog.nextOf(first.spec, stoneCatalog) == null) {
       return false;
     }
     if (lockedStoneIds.contains(first.id) ||
@@ -331,7 +343,7 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     if (first.spec.stage != second.spec.stage) {
       return false;
     }
-    if (StoneCatalog.nextOf(first.spec) == null) {
+    if (StoneCatalog.nextOf(first.spec, stoneCatalog) == null) {
       return false;
     }
     if (!first.isMounted || !second.isMounted) {
@@ -400,7 +412,10 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
         releaseMergeLock(pair);
         continue;
       }
-      final StoneSpec? mergedSpec = StoneCatalog.nextOf(pair.first.spec);
+      final StoneSpec? mergedSpec = StoneCatalog.nextOf(
+        pair.first.spec,
+        stoneCatalog,
+      );
       if (mergedSpec == null) {
         releaseMergeLock(pair);
         continue;

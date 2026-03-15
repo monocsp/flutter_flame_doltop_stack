@@ -70,7 +70,7 @@ class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
         textRenderer: TextPaint(
           style: TextStyle(
             color: const Color(0xFFFDF7ED),
-            fontSize: spec.radius * 1.15,
+            fontSize: spec.radius * 0.82,
             fontWeight: FontWeight.w900,
             shadows: const <Shadow>[
               Shadow(color: Color(0xCC000000), blurRadius: 6),
@@ -83,7 +83,7 @@ class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
 
   @override
   Body createBody() {
-    final double stageProgress = spec.stage / (StoneCatalog.values.length - 1);
+    final double stageProgress = spec.stage / (StoneCatalog.stageCount - 1);
     final BodyDef bodyDef = BodyDef(
       position: spawnPosition,
       type: BodyType.dynamic,
