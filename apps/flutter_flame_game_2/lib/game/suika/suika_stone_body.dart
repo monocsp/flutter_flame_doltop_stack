@@ -10,6 +10,8 @@ import 'package:flutter_flame_game_2/game/suika/assets/stone_asset_data.dart';
 import 'package:flutter_flame_game_2/game/suika/stone_spec.dart';
 import 'package:flutter_flame_game_2/game/suika/suika_game.dart';
 
+enum StoneContactIndicator { none, touching, mergeReady }
+
 /// 원형 물리 바디와 단계 메타데이터를 함께 관리합니다.
 class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
   /// 스톤 생성 시 필요한 규격과 위치를 주입합니다.
@@ -43,6 +45,8 @@ class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
   /// 합체 큐 등록 여부를 표시합니다.
   bool isQueuedForMerge = false;
 
+  StoneContactIndicator contactIndicator = StoneContactIndicator.none;
+
   late final Vector2 halfSize = _computeHalfSize(
     assetData.aspectRatio,
     spec.radius * 2,
@@ -50,6 +54,7 @@ class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
 
   /// 화면상 스프라이트 외곽 기준의 느슨한 합체 반경입니다.
   late final double mergeRadius = math.max(halfSize.x, halfSize.y) * 0.92;
+  late final List<Vector2>? overlayPolygon = _buildOverlayPolygon();
 
   @override
   Future<void> onLoad() async {
@@ -118,7 +123,45 @@ class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
 
   @override
   void render(Canvas canvas) {
-    return;
+    if (contactIndicator == StoneContactIndicator.none) {
+      return;
+    }
+
+    final Color strokeColor = contactIndicator == StoneContactIndicator.mergeReady
+        ? const Color(0xFFFFE082)
+        : const Color(0xE6FDF7ED);
+    final Paint outlinePaint = Paint()
+      ..color = strokeColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = contactIndicator == StoneContactIndicator.mergeReady
+          ? 0.10
+          : 0.07;
+    final Paint glowPaint = Paint()
+      ..color = strokeColor.withValues(
+        alpha: contactIndicator == StoneContactIndicator.mergeReady ? 0.26 : 0.18,
+      )
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = outlinePaint.strokeWidth * 1.9
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8);
+
+    final List<Vector2>? polygon = overlayPolygon;
+    if (polygon == null || polygon.length < 3) {
+      // TODO: polygon hint가 없는 경우 생기는 흰색 원형 fallback 표시는 없애야 함.
+      final double radius = math.max(mergeRadius, spec.radius);
+      canvas.drawCircle(Offset.zero, radius, glowPaint);
+      canvas.drawCircle(Offset.zero, radius, outlinePaint);
+      return;
+    }
+
+    final Path path = Path()
+      ..moveTo(polygon.first.x, polygon.first.y);
+    for (int i = 1; i < polygon.length; i += 1) {
+      path.lineTo(polygon[i].x, polygon[i].y);
+    }
+    path.close();
+
+    canvas.drawPath(path, glowPaint);
+    canvas.drawPath(path, outlinePaint);
   }
 
   /// Flutter asset bundle에서 이미지를 직접 디코드합니다.
@@ -131,17 +174,8 @@ class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
   }
 
   void _attachImageOrFallbackFixtures(Body targetBody, double stageProgress) {
-    final List<Vector2>? hint = assetData.collisionHint;
-    if (hint == null || hint.length < 3) {
-      _attachCircleFallback(targetBody, stageProgress);
-      return;
-    }
-
-    final List<Vector2> scaled = hint
-        .map((Vector2 p) => Vector2(p.x * halfSize.x, p.y * halfSize.y))
-        .toList(growable: false);
-    final List<Vector2> safe = _toConvexWithin8(scaled);
-    if (safe.length < 3 || safe.length > 8) {
+    final List<Vector2>? safe = overlayPolygon;
+    if (safe == null || safe.length < 3) {
       _attachCircleFallback(targetBody, stageProgress);
       return;
     }
@@ -190,6 +224,22 @@ class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
 
     final double halfWidth = diameter * 0.5;
     return Vector2(halfWidth, halfWidth / safeAspect);
+  }
+
+  List<Vector2>? _buildOverlayPolygon() {
+    final List<Vector2>? hint = assetData.collisionHint;
+    if (hint == null || hint.length < 3) {
+      return null;
+    }
+
+    final List<Vector2> scaled = hint
+        .map((Vector2 p) => Vector2(p.x * halfSize.x, p.y * halfSize.y))
+        .toList(growable: false);
+    final List<Vector2> safe = _toConvexWithin8(scaled);
+    if (safe.length < 3 || safe.length > 8) {
+      return null;
+    }
+    return safe;
   }
 
   List<Vector2> _toConvexWithin8(List<Vector2> points) {
