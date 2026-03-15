@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flame/components.dart';
 import 'package:flame/events.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flame_forge2d/flame_forge2d.dart' as f2;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_flame_game_2/game/suika/assets/png_processor.dart';
 import 'package:flutter_flame_game_2/game/suika/assets/stone_asset_data.dart';
 import 'package:flutter_flame_game_2/game/suika/stone_spec.dart';
@@ -119,6 +122,7 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   final PngProcessor pngProcessor = PngProcessor();
   final Map<String, StoneAssetData> stoneAssetMetadata =
       <String, StoneAssetData>{};
+  final Map<String, ui.Image> previewImages = <String, ui.Image>{};
 
   int stoneSequence = 0;
 
@@ -134,6 +138,10 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
             .toList(growable: false),
       ),
     );
+    for (final StoneSpec spec in StoneCatalog.values) {
+      final ByteData data = await rootBundle.load(spec.assetPath);
+      previewImages[spec.assetPath] = await decodePreviewImage(data);
+    }
     await add(ScreenHitbox());
     await addAll(<Component>[
       BoundsBody(boardWidth: boardWidth, boardHeight: boardHeight),
@@ -505,26 +513,44 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     final Vector2 spawnCenter = camera.localToGlobal(Vector2(spawnX, spawnY));
     final double previewRadius = currentStone.radius * camera.viewfinder.zoom;
     final Paint linePaint = Paint()
-      ..color = const Color(0xFFE76F51).withValues(alpha: 0.45)
-      ..strokeWidth = 2;
-    final Paint previewPaint = Paint()
-      ..color = currentStone.color.withValues(alpha: 0.68);
+      ..color = const Color(0xFFE76F51).withValues(alpha: 0.28)
+      ..strokeWidth = 1.5;
 
     canvas.drawLine(
       Offset(topLeft.x, topLeft.y),
       Offset(topRight.x, topRight.y),
       linePaint,
     );
-    canvas.drawCircle(
-      Offset(spawnCenter.x, spawnCenter.y),
-      previewRadius,
-      previewPaint,
-    );
+    final ui.Image? image = previewImages[currentStone.assetPath];
+    if (image != null) {
+      final double imageAspectRatio = image.width / image.height;
+      final double previewHeight = previewRadius * 2.3;
+      final double previewWidth = previewHeight * imageAspectRatio;
+      final Rect dst = Rect.fromCenter(
+        center: Offset(spawnCenter.x, spawnCenter.y),
+        width: previewWidth,
+        height: previewHeight,
+      );
+      canvas.drawImageRect(
+        image,
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+        dst,
+        Paint(),
+      );
+    }
     canvas.drawLine(
       Offset(spawnCenter.x, 0),
-      Offset(spawnCenter.x, spawnCenter.y - previewRadius - 6),
-      linePaint..strokeWidth = 1.5,
+      Offset(spawnCenter.x, spawnCenter.y - previewRadius - 10),
+      linePaint,
     );
+  }
+
+  Future<ui.Image> decodePreviewImage(ByteData data) {
+    final Completer<ui.Image> completer = Completer<ui.Image>();
+    ui.decodeImageFromList(data.buffer.asUint8List(), (ui.Image image) {
+      completer.complete(image);
+    });
+    return completer.future;
   }
 }
 

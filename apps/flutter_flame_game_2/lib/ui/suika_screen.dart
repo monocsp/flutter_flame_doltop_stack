@@ -77,20 +77,26 @@ class SuikaScreenState extends State<SuikaScreen> {
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             child: Column(
               children: <Widget>[
                 buildHud(),
-                const SizedBox(height: 14),
+                const SizedBox(height: 8),
                 Expanded(
                   child: Center(
-                    child: AspectRatio(
-                      aspectRatio: SuikaGame.boardAspectRatio,
-                      child: Stack(
-                        children: <Widget>[
-                          buildInteractiveGameLayer(currentGame),
-                          buildGameOverOverlay(),
-                        ],
+                    child: SizedBox.expand(
+                      child: FittedBox(
+                        fit: BoxFit.contain,
+                        child: SizedBox(
+                          width: 440,
+                          height: 440 / SuikaGame.boardAspectRatio,
+                          child: Stack(
+                            children: <Widget>[
+                              buildInteractiveGameLayer(currentGame),
+                              buildGameOverOverlay(),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -166,56 +172,80 @@ class SuikaScreenState extends State<SuikaScreen> {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
-            Expanded(child: buildScoreColumn()),
-            const SizedBox(width: 12),
+            Expanded(child: buildScorePanel()),
+            const SizedBox(width: 10),
             buildNextStonePreview(),
-            const SizedBox(width: 12),
-            buildActionButtons(),
+            const SizedBox(width: 10),
+            buildRestartButton(),
           ],
         ),
       ),
     );
   }
 
-  /// 현재 점수와 최고 점수를 세로로 배치합니다.
-  Widget buildScoreColumn() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        const Text(
-          'SUiKA LOOP',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.6,
-            color: Color(0xFFF7C59F),
+  /// 현재 점수와 최고 점수를 컴팩트한 카드로 배치합니다.
+  Widget buildScorePanel() {
+    return ValueListenableBuilder<int>(
+      valueListenable: hudState.score,
+      builder: (BuildContext context, int score, Widget? child) {
+        return ValueListenableBuilder<int>(
+          valueListenable: hudState.bestScore,
+          builder: (BuildContext context, int best, Widget? child) {
+            return Row(
+              children: <Widget>[
+                buildMetricCard(label: 'SCORE', value: '$score'),
+                const SizedBox(width: 8),
+                buildMetricCard(label: 'BEST', value: '$best'),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// 점수 카드 1개를 구성합니다.
+  Widget buildMetricCard({required String label, required String value}) {
+    return Expanded(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFF0C1016).withValues(alpha: 0.64),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: const Color(0xFFF7F3E9).withValues(alpha: 0.08),
           ),
         ),
-        const SizedBox(height: 8),
-        ValueListenableBuilder<int>(
-          valueListenable: hudState.score,
-          builder: (BuildContext context, int value, Widget? child) {
-            return Text(
-              'Score $value',
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-            );
-          },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                  color: Color(0xFFF7C59F),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 4),
-        ValueListenableBuilder<int>(
-          valueListenable: hudState.bestScore,
-          builder: (BuildContext context, int value, Widget? child) {
-            return Text(
-              'Best $value',
-              style: const TextStyle(fontSize: 14, color: Color(0xFFD9CAB3)),
-            );
-          },
-        ),
-      ],
+      ),
     );
   }
 
@@ -239,10 +269,10 @@ class SuikaScreenState extends State<SuikaScreen> {
             const SizedBox(height: 6),
             AnimatedContainer(
               duration: const Duration(milliseconds: 220),
-              width: 52,
-              height: 52,
+              width: 58,
+              height: 58,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
+                borderRadius: BorderRadius.circular(18),
                 color: const Color(0xFF201A17),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
@@ -254,7 +284,7 @@ class SuikaScreenState extends State<SuikaScreen> {
               alignment: Alignment.center,
               clipBehavior: Clip.antiAlias,
               child: Padding(
-                padding: const EdgeInsets.all(3),
+                padding: const EdgeInsets.all(5),
                 child: Image.asset(spec.assetPath, fit: BoxFit.contain),
               ),
             ),
@@ -264,23 +294,25 @@ class SuikaScreenState extends State<SuikaScreen> {
     );
   }
 
-  /// 재시작과 일시정지 버튼을 제공합니다.
-  Widget buildActionButtons() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        TextButton(onPressed: restartGame, child: const Text('Restart')),
-        const SizedBox(height: 4),
-        ValueListenableBuilder<bool>(
-          valueListenable: hudState.isPaused,
-          builder: (BuildContext context, bool isPaused, Widget? child) {
-            return TextButton(
-              onPressed: () => currentGame.togglePause(),
-              child: Text(isPaused ? 'Resume' : 'Pause'),
-            );
-          },
+  /// 재시작 버튼만 제공합니다.
+  Widget buildRestartButton() {
+    return SizedBox(
+      height: 58,
+      child: FilledButton(
+        onPressed: restartGame,
+        style: FilledButton.styleFrom(
+          backgroundColor: const Color(0xFFE76F51),
+          foregroundColor: const Color(0xFFFDF7ED),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
         ),
-      ],
+        child: const Text(
+          'Restart',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+        ),
+      ),
     );
   }
 
