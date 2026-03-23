@@ -1,6 +1,6 @@
-# flutter_flame_game Project Agent Instructions (Flutter)
+# flutter_flame_stacking_game Project Agent Instructions (Flutter)
 
-본 문서는 `flutter_flame_game` 프로젝트의 구조와 기술 스택을 바탕으로 AI 보조 도구(GitHub Copilot, Cursor, ChatGPT 등)에게 정확하고 일관된 코드 수정을 지시하기 위한 프롬프트 가이드라인입니다.
+본 문서는 `flutter_flame_stacking_game` 프로젝트의 구조와 기술 스택을 바탕으로 AI 보조 도구(GitHub Copilot, Cursor, ChatGPT 등)에게 정확하고 일관된 코드 수정을 지시하기 위한 프롬프트 가이드라인입니다.
 
 ## 역할 / 목표
 

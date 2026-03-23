@@ -6,13 +6,14 @@ Flutter/Flame games monorepo.
 
 ```text
 apps/
-  flutter_flame_game/
-  another_game/
+  flutter_flame_stacking_game/
+  flutter_flame_suika_game/
 ```
 
-## Current app
+## Current apps
 
-- `apps/flutter_flame_game`
+- `apps/flutter_flame_stacking_game`: 돌쌓기 적층 게임
+- `apps/flutter_flame_suika_game`: 수박게임 허브 앱
 
 ## Add another Flame project
 
@@ -24,16 +25,23 @@ Then add Flame dependencies in `apps/another_game/pubspec.yaml`.
 
 ## Common commands
 
-Run the existing game:
+Run the stacking game:
 
 ```bash
-cd apps/flutter_flame_game
+cd apps/flutter_flame_stacking_game
 flutter run
 ```
 
-Analyze the existing game:
+Run the suika game hub:
 
 ```bash
-cd apps/flutter_flame_game
+cd apps/flutter_flame_suika_game
+flutter run
+```
+
+Analyze the stacking game:
+
+```bash
+cd apps/flutter_flame_stacking_game
 flutter analyze
 ```

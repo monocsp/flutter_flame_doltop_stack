@@ -1,6 +1,6 @@
-# flutter_flame_game_2
+# flutter_flame_stacking_game
 
-A new Flutter project.
+돌을 쌓아 올리며 높이를 만드는 Flame 기반 적층 게임 프로젝트입니다.
 
 ## Getting Started
 
@@ -8,9 +8,8 @@ This project is a starting point for a Flutter application.
 
 A few resources to get you started if this is your first Flutter project:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
+- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
 
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
