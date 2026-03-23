@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flame/game.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_flame_game/ui/widgets/particle_background.dart';
 import 'package:flutter_flame_game_2/game/suika/prepared_suika_assets.dart';
@@ -311,35 +312,43 @@ class SuikaScreenState extends State<SuikaScreen> {
     return ValueListenableBuilder<int>(
       valueListenable: hudState.score,
       builder: (BuildContext context, int score, Widget? child) {
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            const Text(
-              'SCORE',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.4,
-                color: Color(0xFFD9CAB3),
-              ),
-            ),
-            const SizedBox(height: 6),
-            buildMetricCard(
-              minWidth: 148,
-              child: AnimatedScoreValue(score: score),
-            ),
-          ],
+        return ValueListenableBuilder<int>(
+          valueListenable: hudState.comboPendingBonus,
+          builder:
+              (BuildContext context, int comboPendingBonus, Widget? child) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text(
+                      'SCORE',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.4,
+                        color: Color(0xFFD9CAB3),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: 214,
+                      child: buildMetricCard(
+                        child: ScorePanelBody(
+                          score: score,
+                          pendingBonus: comboPendingBonus,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
         );
       },
     );
   }
 
   /// 점수 카드 1개를 구성합니다.
-  Widget buildMetricCard({
-    required Widget child,
-    double? minWidth,
-  }) {
+  Widget buildMetricCard({required Widget child, double? minWidth}) {
     return ConstrainedBox(
       constraints: BoxConstraints(minWidth: minWidth ?? 0),
       child: DecoratedBox(
@@ -418,8 +427,7 @@ class SuikaScreenState extends State<SuikaScreen> {
   /// 단계별 스톤 도감을 바텀시트로 엽니다.
   Future<void> openStoneCatalogSheet() async {
     final SuikaGame? game = currentGame;
-    final bool shouldResume =
-        game != null && !game.isGameOver && !game.paused;
+    final bool shouldResume = game != null && !game.isGameOver && !game.paused;
     if (shouldResume) {
       game.pauseEngine();
       hudState.setPaused(true);
@@ -491,23 +499,41 @@ class SuikaScreenState extends State<SuikaScreen> {
   /// 재시작 버튼만 제공합니다.
   Widget buildRestartButton() {
     return SizedBox(
-      height: 54,
+      width: 34,
+      height: 34,
       child: FilledButton(
         onPressed: restartGame,
         style: FilledButton.styleFrom(
           backgroundColor: const Color(0xFFE76F51),
           foregroundColor: const Color(0xFFFDF7ED),
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          padding: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
-        child: const Text(
-          'Restart',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-        ),
+        child: const Icon(Icons.replay_rounded, size: 18),
       ),
     );
+  }
+
+  /// 콤보 유지 시간을 화면 하단의 얇은 진행 바로 렌더링합니다.
+  Widget buildBottomComboBar() {
+    return ValueListenableBuilder<double>(
+      valueListenable: hudState.comboRemainingSeconds,
+      builder: (BuildContext context, double remainingSeconds, Widget? child) {
+        return ComboProgressBar(
+          progress: (remainingSeconds / SuikaGame.comboMaxSeconds).clamp(
+            0.0,
+            1.0,
+          ),
+        );
+      },
+    );
+  }
+
+  /// 콤보 시작 순간 중앙 문구를 짧게 표시합니다.
+  Widget buildComboPulseOverlay() {
+    return ComboPulseOverlay(triggerListenable: hudState.comboPulseToken);
   }
 
   /// 공개/비공개 단계를 함께 보여주는 도감 바텀시트 본문입니다.
@@ -534,70 +560,69 @@ class SuikaScreenState extends State<SuikaScreen> {
           padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
           child: ValueListenableBuilder<Set<int>>(
             valueListenable: hudState.revealedStages,
-            builder: (
-              BuildContext context,
-              Set<int> revealedStages,
-              Widget? child,
-            ) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Center(
-                    child: Container(
-                      width: 38,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF7F3E9).withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Stone Catalog',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFFF7F3E9),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    '1~6 단계는 기본 공개됩니다.',
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.45,
-                      color: Color(0xFFD9CAB3),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: assets.catalog.length,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                          childAspectRatio: 0.9,
+            builder:
+                (BuildContext context, Set<int> revealedStages, Widget? child) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Center(
+                        child: Container(
+                          width: 38,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFFF7F3E9,
+                            ).withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
                         ),
-                    itemBuilder: (BuildContext context, int index) {
-                      final StoneSpec spec = assets.catalog[index];
-                      final bool isRevealed = revealedStages.contains(
-                        spec.stage,
-                      );
-                      return buildStoneCatalogTile(
-                        spec: spec,
-                        asset: assets.assetFor(spec),
-                        isRevealed: isRevealed,
-                      );
-                    },
-                  ),
-                ],
-              );
-            },
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Stone Catalog',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFFF7F3E9),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        '1~6 단계는 기본 공개됩니다.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.45,
+                          color: Color(0xFFD9CAB3),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: assets.catalog.length,
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              mainAxisSpacing: 12,
+                              crossAxisSpacing: 12,
+                              childAspectRatio: 0.9,
+                            ),
+                        itemBuilder: (BuildContext context, int index) {
+                          final StoneSpec spec = assets.catalog[index];
+                          final bool isRevealed = revealedStages.contains(
+                            spec.stage,
+                          );
+                          return buildStoneCatalogTile(
+                            spec: spec,
+                            asset: assets.assetFor(spec),
+                            isRevealed: isRevealed,
+                          );
+                        },
+                      ),
+                    ],
+                  );
+                },
           ),
         ),
       ),
@@ -634,7 +659,10 @@ class SuikaScreenState extends State<SuikaScreen> {
                   child: isRevealed
                       ? Padding(
                           padding: const EdgeInsets.all(8),
-                          child: RawImage(image: asset.image, fit: BoxFit.contain),
+                          child: RawImage(
+                            image: asset.image,
+                            fit: BoxFit.contain,
+                          ),
                         )
                       : FittedBox(
                           fit: BoxFit.scaleDown,
@@ -819,30 +847,31 @@ class SuikaScreenState extends State<SuikaScreen> {
                   const SizedBox(height: 6),
                   Expanded(
                     child: LayoutBuilder(
-                      builder: (
-                        BuildContext context,
-                        BoxConstraints constraints,
-                      ) {
-                        final double boardWidth = constraints.maxWidth;
-                        final double boardHeight =
-                            boardWidth / SuikaGame.boardAspectRatio;
+                      builder:
+                          (BuildContext context, BoxConstraints constraints) {
+                            final double boardWidth = constraints.maxWidth;
+                            final double boardHeight =
+                                boardWidth / SuikaGame.boardAspectRatio;
 
-                        return Align(
-                          alignment: Alignment.topCenter,
-                          child: SizedBox(
-                            width: boardWidth,
-                            height: boardHeight,
-                            child: Stack(
-                              children: <Widget>[
-                                buildInteractiveGameLayer(game),
-                                buildGameOverOverlay(),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
+                            return Align(
+                              alignment: Alignment.topCenter,
+                              child: SizedBox(
+                                width: boardWidth,
+                                height: boardHeight,
+                                child: Stack(
+                                  children: <Widget>[
+                                    buildInteractiveGameLayer(game),
+                                    buildComboPulseOverlay(),
+                                    buildGameOverOverlay(),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
                     ),
                   ),
+                  const SizedBox(height: 6),
+                  buildBottomComboBar(),
                 ],
               ),
             ),
@@ -929,9 +958,413 @@ class _AnimatedScoreValueState extends State<AnimatedScoreValue> {
       builder: (BuildContext context, double value, Widget? child) {
         return Text(
           value.round().toString(),
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+          maxLines: 1,
+          overflow: TextOverflow.fade,
+          softWrap: false,
+          textAlign: TextAlign.left,
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
+          ),
         );
       },
+    );
+  }
+}
+
+class AnimatedPendingComboBonusValue extends StatefulWidget {
+  const AnimatedPendingComboBonusValue({
+    super.key,
+    required this.amount,
+    this.leftPadding = 10,
+  });
+
+  final int amount;
+  final double leftPadding;
+
+  @override
+  State<AnimatedPendingComboBonusValue> createState() =>
+      _AnimatedPendingComboBonusValueState();
+}
+
+class _AnimatedPendingComboBonusValueState
+    extends State<AnimatedPendingComboBonusValue> {
+  late int from;
+  late int to;
+  bool wasVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    from = widget.amount;
+    to = widget.amount;
+    wasVisible = widget.amount > 0;
+  }
+
+  @override
+  void didUpdateWidget(covariant AnimatedPendingComboBonusValue oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.amount == to) {
+      return;
+    }
+    from = to;
+    to = widget.amount;
+    wasVisible = oldWidget.amount > 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isVisible = widget.amount > 0;
+    final double width = isVisible || wasVisible ? 112 : 0;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      width: width,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
+        opacity: isVisible ? 1 : 0,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: EdgeInsets.only(left: widget.leftPadding),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: from.toDouble(), end: to.toDouble()),
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              builder: (BuildContext context, double value, Widget? child) {
+                return Text(
+                  '+${value.round()}',
+                  maxLines: 1,
+                  overflow: TextOverflow.clip,
+                  softWrap: false,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFFFF6B57),
+                    fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ScorePanelBody extends StatefulWidget {
+  const ScorePanelBody({
+    super.key,
+    required this.score,
+    required this.pendingBonus,
+  });
+
+  final int score;
+  final int pendingBonus;
+
+  @override
+  State<ScorePanelBody> createState() => _ScorePanelBodyState();
+}
+
+class _ScorePanelBodyState extends State<ScorePanelBody> {
+  Timer? settlementTimer;
+  late int displayedScore;
+  late int displayedPendingBonus;
+
+  @override
+  void initState() {
+    super.initState();
+    displayedScore = widget.score;
+    displayedPendingBonus = widget.pendingBonus;
+  }
+
+  @override
+  void didUpdateWidget(covariant ScorePanelBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final bool hadPendingBonus = oldWidget.pendingBonus > 0;
+    final bool hasPendingBonus = widget.pendingBonus > 0;
+
+    if (hasPendingBonus) {
+      settlementTimer?.cancel();
+      if (displayedScore != widget.score ||
+          displayedPendingBonus != widget.pendingBonus) {
+        setState(() {
+          displayedScore = widget.score;
+          displayedPendingBonus = widget.pendingBonus;
+        });
+      }
+      return;
+    }
+
+    if (hadPendingBonus && widget.score > oldWidget.score) {
+      settlementTimer?.cancel();
+      setState(() {
+        displayedScore = oldWidget.score;
+        displayedPendingBonus = 0;
+      });
+      settlementTimer = Timer(const Duration(milliseconds: 150), () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          displayedScore = widget.score;
+        });
+      });
+      return;
+    }
+
+    settlementTimer?.cancel();
+    if (displayedScore != widget.score || displayedPendingBonus != 0) {
+      setState(() {
+        displayedScore = widget.score;
+        displayedPendingBonus = 0;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    settlementTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (displayedPendingBonus > 0) {
+      return ComboScorePanel(
+        score: displayedScore,
+        pendingBonus: displayedPendingBonus,
+      );
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: AnimatedScoreValue(score: displayedScore),
+    );
+  }
+}
+
+class ComboScorePanel extends StatelessWidget {
+  const ComboScorePanel({
+    super.key,
+    required this.score,
+    required this.pendingBonus,
+  });
+
+  final int score;
+  final int pendingBonus;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          score.toString(),
+          maxLines: 1,
+          overflow: TextOverflow.fade,
+          softWrap: false,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFFB3A38F),
+            fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
+          ),
+        ),
+        const SizedBox(height: 2),
+        AnimatedPendingComboBonusValue(amount: pendingBonus, leftPadding: 0),
+      ],
+    );
+  }
+}
+
+class ComboProgressBar extends StatefulWidget {
+  const ComboProgressBar({super.key, required this.progress});
+
+  final double progress;
+
+  @override
+  State<ComboProgressBar> createState() => _ComboProgressBarState();
+}
+
+class _ComboProgressBarState extends State<ComboProgressBar> {
+  late double previousProgress;
+
+  @override
+  void initState() {
+    super.initState();
+    previousProgress = widget.progress;
+  }
+
+  @override
+  void didUpdateWidget(covariant ComboProgressBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if ((oldWidget.progress - widget.progress).abs() < 0.0001) {
+      return;
+    }
+    previousProgress = oldWidget.progress;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Duration duration = widget.progress > previousProgress
+        ? const Duration(milliseconds: 150)
+        : const Duration(milliseconds: 84);
+
+    return IgnorePointer(
+      child: SizedBox(
+        height: 8,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xFF5A5C62).withValues(alpha: 0.34),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: previousProgress, end: widget.progress),
+            duration: duration,
+            curve: Curves.linear,
+            builder: (BuildContext context, double value, Widget? child) {
+              return Align(
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  widthFactor: value.clamp(0.0, 1.0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          stops: <double>[0.0, 0.48, 1.0],
+                          colors: <Color>[
+                            Color(0xFF8A1720),
+                            Color(0xFFD83A44),
+                            Color(0xFFFF8D62),
+                          ],
+                        ),
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: const Color(
+                              0xFFFF6C58,
+                            ).withValues(alpha: 0.18),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ComboPulseOverlay extends StatefulWidget {
+  const ComboPulseOverlay({super.key, required this.triggerListenable});
+
+  final ValueListenable<int> triggerListenable;
+
+  @override
+  State<ComboPulseOverlay> createState() => _ComboPulseOverlayState();
+}
+
+class _ComboPulseOverlayState extends State<ComboPulseOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController controller;
+  late final Animation<double> opacity;
+  late final Animation<double> scale;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 820),
+    );
+    opacity = CurvedAnimation(
+      parent: controller,
+      curve: const Interval(0.0, 0.3, curve: Curves.easeOutCubic),
+      reverseCurve: Curves.easeInCubic,
+    );
+    scale = Tween<double>(
+      begin: 0.92,
+      end: 1.02,
+    ).animate(CurvedAnimation(parent: controller, curve: Curves.easeOutCubic));
+    widget.triggerListenable.addListener(handleTrigger);
+  }
+
+  @override
+  void didUpdateWidget(covariant ComboPulseOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.triggerListenable, widget.triggerListenable)) {
+      return;
+    }
+    oldWidget.triggerListenable.removeListener(handleTrigger);
+    widget.triggerListenable.addListener(handleTrigger);
+  }
+
+  @override
+  void dispose() {
+    widget.triggerListenable.removeListener(handleTrigger);
+    controller.dispose();
+    super.dispose();
+  }
+
+  void handleTrigger() {
+    controller
+      ..stop()
+      ..forward(from: 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Center(
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (BuildContext context, Widget? child) {
+            if (controller.isDismissed) {
+              return const SizedBox.shrink();
+            }
+            final double fadeOut =
+                1 - Curves.easeIn.transform(controller.value);
+            final double visibleOpacity = opacity.value * fadeOut;
+            return Opacity(
+              opacity: visibleOpacity.clamp(0.0, 1.0),
+              child: Transform.scale(
+                scale: scale.value,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF101418).withValues(alpha: 0.34),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    child: Text(
+                      'Combo',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.4,
+                        color: Color(0xFFFFE3D1),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 }

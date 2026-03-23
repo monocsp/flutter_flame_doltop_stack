@@ -54,6 +54,9 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   static const double boardWidthUnits = 10.2;
   static const double boardHeightUnits = 16.4;
   static const double boardAspectRatio = boardWidthUnits / boardHeightUnits;
+  static const double comboStartSeconds = 5;
+  static const double comboMaxSeconds = 10;
+  static const double comboWarmupWindowSeconds = 1.8;
   static final Vector2 worldGravity = Vector2(0, 36);
 
   /// HUD 상태와 보드 크기를 받아 게임 세션을 초기화합니다.
@@ -111,6 +114,9 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   /// 현재 점수입니다.
   int score = 0;
 
+  /// 아직 정산되지 않은 콤보 보너스입니다.
+  int pendingComboBonus = 0;
+
   /// 게임오버 플래그입니다.
   bool isGameOver = false;
 
@@ -129,6 +135,11 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   final List<MergePair> pendingMerges = <MergePair>[];
   final Set<int> lockedStoneIds = <int>{};
 
+  double comboRemainingSeconds = 0;
+  double comboWarmupElapsedSeconds = double.infinity;
+  int comboWarmupCount = 0;
+  int comboHighestMergeValue = 0;
+  int comboWarmupHighestMergeValue = 0;
   int stoneSequence = 0;
 
   /// 월드 경계와 초기 큐를 생성합니다.
@@ -230,6 +241,7 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     dropCooldown = max(0, dropCooldown - dt);
     advanceContactTimers(dt);
     resolvePendingMerges();
+    updateComboState(dt);
     updateDangerState(dt);
     super.update(dt);
   }
@@ -392,7 +404,12 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
       return;
     }
     final List<MergePair> mergeSnapshot = List<MergePair>.from(pendingMerges);
+    mergeSnapshot.sort(
+      (MergePair first, MergePair second) =>
+          second.first.spec.stage.compareTo(first.first.spec.stage),
+    );
     pendingMerges.clear();
+    int highestMergeValueThisFrame = 0;
     for (final MergePair pair in mergeSnapshot) {
       if (!pair.first.isMounted || !pair.second.isMounted) {
         releaseMergeLock(pair);
@@ -421,9 +438,16 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
         initialLinearVelocity: mergedVelocity,
       );
       world.add(mergedStone);
+      highestMergeValueThisFrame = max(
+        highestMergeValueThisFrame,
+        pair.first.spec.stage + 1,
+      );
       setScore(score + mergedSpec.score);
       unawaited(playMergeHaptic(mergedSpec));
       releaseMergeLock(pair);
+    }
+    if (highestMergeValueThisFrame > 0) {
+      registerComboMerge(highestMergeValueThisFrame);
     }
   }
 
@@ -497,6 +521,7 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     if (isGameOver) {
       return;
     }
+    flushPendingComboBonus();
     isGameOver = true;
     hudState.setGameOver(true);
     hudState.setPaused(false);
@@ -507,6 +532,103 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   void setScore(int nextScore) {
     score = nextScore;
     hudState.setScore(nextScore);
+  }
+
+  /// 현재 콤보 상태를 HUD에 동기화합니다.
+  void syncComboHud() {
+    hudState.setComboState(
+      active: comboRemainingSeconds > 0,
+      remainingSeconds: comboRemainingSeconds,
+      pendingBonus: pendingComboBonus,
+    );
+  }
+
+  /// 합체가 한 번 발생했을 때 콤보 예열 또는 활성 콤보를 갱신합니다.
+  void registerComboMerge(int mergeValue) {
+    if (mergeValue <= 0) {
+      return;
+    }
+    if (comboRemainingSeconds > 0) {
+      final bool extendsComboTime = mergeValue >= comboHighestMergeValue;
+      if (extendsComboTime) {
+        comboHighestMergeValue = max(comboHighestMergeValue, mergeValue);
+        comboRemainingSeconds = min(comboMaxSeconds, comboRemainingSeconds + 1);
+      }
+      pendingComboBonus += calculateComboBonus(mergeValue);
+      syncComboHud();
+      return;
+    }
+
+    if (comboWarmupElapsedSeconds > comboWarmupWindowSeconds) {
+      comboWarmupCount = 0;
+      comboWarmupHighestMergeValue = 0;
+    }
+
+    comboWarmupCount += 1;
+    comboWarmupHighestMergeValue = max(
+      comboWarmupHighestMergeValue,
+      mergeValue,
+    );
+    comboWarmupElapsedSeconds = 0;
+
+    if (comboWarmupCount < 2) {
+      return;
+    }
+
+    comboRemainingSeconds = comboStartSeconds;
+    comboHighestMergeValue = max(comboWarmupHighestMergeValue, mergeValue);
+    pendingComboBonus += calculateComboBonus(mergeValue);
+    comboWarmupCount = 0;
+    comboWarmupHighestMergeValue = 0;
+    comboWarmupElapsedSeconds = double.infinity;
+    hudState.triggerComboPulse();
+    syncComboHud();
+  }
+
+  /// 이번 합체 단계와 남은 콤보 시간으로 추가 점수를 계산합니다.
+  int calculateComboBonus(int mergeValue) {
+    final int cubeBonus = mergeValue * mergeValue * mergeValue;
+    return cubeBonus + comboRemainingSeconds.floor();
+  }
+
+  /// 콤보 타이머와 예열 타이머를 매 틱 갱신합니다.
+  void updateComboState(double dt) {
+    if (comboRemainingSeconds > 0) {
+      comboRemainingSeconds = max(0, comboRemainingSeconds - dt);
+      if (comboRemainingSeconds == 0) {
+        flushPendingComboBonus();
+        return;
+      }
+      syncComboHud();
+      return;
+    }
+
+    if (comboWarmupCount == 0) {
+      return;
+    }
+
+    comboWarmupElapsedSeconds += dt;
+    if (comboWarmupElapsedSeconds <= comboWarmupWindowSeconds) {
+      return;
+    }
+    comboWarmupCount = 0;
+    comboWarmupHighestMergeValue = 0;
+    comboWarmupElapsedSeconds = double.infinity;
+  }
+
+  /// 진행 중인 콤보를 정산하고 HUD를 기본 상태로 되돌립니다.
+  void flushPendingComboBonus() {
+    final int bonus = pendingComboBonus;
+    comboRemainingSeconds = 0;
+    comboHighestMergeValue = 0;
+    comboWarmupCount = 0;
+    comboWarmupHighestMergeValue = 0;
+    comboWarmupElapsedSeconds = double.infinity;
+    pendingComboBonus = 0;
+    if (bonus > 0) {
+      setScore(score + bonus);
+    }
+    syncComboHud();
   }
 
   /// 드롭 풀에서 무작위 단계를 선택합니다.

@@ -4,17 +4,19 @@ import 'package:flutter_flame_game_2/game/suika/stone_spec.dart';
 /// Flutter HUD와 Flame 게임 사이의 반응형 상태를 중계합니다.
 class SuikaHudState {
   /// HUD에 필요한 노티파이어를 한 곳에 모읍니다.
-  SuikaHudState({
-    int initialBestScore = 0,
-    List<StoneSpec>? initialCatalog,
-  }) : score = ValueNotifier<int>(0),
-       bestScore = ValueNotifier<int>(initialBestScore),
-       nextStone = ValueNotifier<StoneSpec>(
-         (initialCatalog ?? StoneCatalog.droppableValues()).first,
-       ),
-       revealedStages = ValueNotifier<Set<int>>(<int>{0, 1, 2, 3, 4, 5}),
-       isPaused = ValueNotifier<bool>(false),
-       isGameOver = ValueNotifier<bool>(false);
+  SuikaHudState({int initialBestScore = 0, List<StoneSpec>? initialCatalog})
+    : score = ValueNotifier<int>(0),
+      bestScore = ValueNotifier<int>(initialBestScore),
+      nextStone = ValueNotifier<StoneSpec>(
+        (initialCatalog ?? StoneCatalog.droppableValues()).first,
+      ),
+      revealedStages = ValueNotifier<Set<int>>(<int>{0, 1, 2, 3, 4, 5}),
+      comboPendingBonus = ValueNotifier<int>(0),
+      comboRemainingSeconds = ValueNotifier<double>(0),
+      isComboActive = ValueNotifier<bool>(false),
+      comboPulseToken = ValueNotifier<int>(0),
+      isPaused = ValueNotifier<bool>(false),
+      isGameOver = ValueNotifier<bool>(false);
 
   /// 현재 점수를 노출합니다.
   final ValueNotifier<int> score;
@@ -28,6 +30,18 @@ class SuikaHudState {
   /// 도감에서 공개된 단계 목록을 보관합니다.
   final ValueNotifier<Set<int>> revealedStages;
 
+  /// 아직 정산되지 않은 콤보 보너스 점수입니다.
+  final ValueNotifier<int> comboPendingBonus;
+
+  /// 현재 콤보 유지 시간입니다.
+  final ValueNotifier<double> comboRemainingSeconds;
+
+  /// 현재 콤보 활성 여부입니다.
+  final ValueNotifier<bool> isComboActive;
+
+  /// 중앙 Combo 연출을 재생하기 위한 트리거 토큰입니다.
+  final ValueNotifier<int> comboPulseToken;
+
   /// 일시정지 상태를 노출합니다.
   final ValueNotifier<bool> isPaused;
 
@@ -37,6 +51,9 @@ class SuikaHudState {
   /// 점수와 게임오버 플래그를 초기값으로 돌립니다.
   void resetForNewGame() {
     score.value = 0;
+    comboPendingBonus.value = 0;
+    comboRemainingSeconds.value = 0;
+    isComboActive.value = false;
     isPaused.value = false;
     isGameOver.value = false;
   }
@@ -63,6 +80,22 @@ class SuikaHudState {
     revealedStages.value = <int>{...current, spec.stage};
   }
 
+  /// 콤보 HUD 상태를 한 번에 갱신합니다.
+  void setComboState({
+    required bool active,
+    required double remainingSeconds,
+    required int pendingBonus,
+  }) {
+    isComboActive.value = active;
+    comboRemainingSeconds.value = remainingSeconds;
+    comboPendingBonus.value = pendingBonus;
+  }
+
+  /// 콤보 시작 문구를 한 번 재생합니다.
+  void triggerComboPulse() {
+    comboPulseToken.value += 1;
+  }
+
   /// 일시정지 상태를 HUD에 반영합니다.
   void setPaused(bool value) {
     isPaused.value = value;
@@ -79,6 +112,10 @@ class SuikaHudState {
     bestScore.dispose();
     nextStone.dispose();
     revealedStages.dispose();
+    comboPendingBonus.dispose();
+    comboRemainingSeconds.dispose();
+    isComboActive.dispose();
+    comboPulseToken.dispose();
     isPaused.dispose();
     isGameOver.dispose();
   }
