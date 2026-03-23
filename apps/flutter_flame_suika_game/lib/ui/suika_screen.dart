@@ -564,7 +564,7 @@ class SuikaScreenState extends State<SuikaScreen> {
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    '1~6 단계는 기본 공개됩니다. 7~9 단계는 게임에서 처음 등장하면 해금됩니다.',
+                    '1~6 단계는 기본 공개됩니다.',
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.45,
