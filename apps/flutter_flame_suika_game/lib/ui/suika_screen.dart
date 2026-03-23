@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_flame_game/ui/widgets/particle_background.dart';
 import 'package:flutter_flame_game_2/game/suika/prepared_suika_assets.dart';
 import 'package:flutter_flame_game_2/game/suika/stone_spec.dart';
 import 'package:flutter_flame_game_2/game/suika/suika_game.dart';
@@ -26,6 +29,9 @@ class SuikaScreen extends StatefulWidget {
 
 /// 게임 인스턴스 재생성과 HUD 연결을 관리합니다.
 class SuikaScreenState extends State<SuikaScreen> {
+  static const Duration holdToDragDelay = Duration(milliseconds: 140);
+  static const double dragActivationDistance = 12;
+
   /// ValueNotifier 기반으로 세션과 게임 참조를 관리합니다.
   SuikaScreenState();
 
@@ -35,6 +41,10 @@ class SuikaScreenState extends State<SuikaScreen> {
   int sessionVersion = 0;
   bool isPreparing = true;
   Object? loadError;
+  Timer? holdTimer;
+  int? activePointer;
+  Offset? pointerDownPosition;
+  bool isDraggingSpawner = false;
 
   @override
   void initState() {
@@ -55,6 +65,7 @@ class SuikaScreenState extends State<SuikaScreen> {
 
   @override
   void dispose() {
+    holdTimer?.cancel();
     hudState.dispose();
     super.dispose();
   }
@@ -85,9 +96,76 @@ class SuikaScreenState extends State<SuikaScreen> {
     game.moveSpawnerByRatio(ratio);
   }
 
-  /// 드래그 종료 시 현재 스포너 위치에서 스톤을 떨어뜨립니다.
-  void handlePanEnd() {
+  /// 지정한 위치로 스포너를 옮긴 뒤 현재 스톤을 떨어뜨립니다.
+  void dropStoneAtLocalDx(double localDx, double width) {
+    moveSpawnerForLocalDx(localDx, width);
     currentGame?.dropCurrentStone();
+  }
+
+  /// 포인터를 누른 순간 프리뷰를 해당 위치로 이동시키고 홀드 추적을 시작합니다.
+  void beginPointerTracking(PointerDownEvent event, double width) {
+    if (activePointer != null) {
+      return;
+    }
+    activePointer = event.pointer;
+    pointerDownPosition = event.localPosition;
+    isDraggingSpawner = false;
+    moveSpawnerForLocalDx(event.localPosition.dx, width);
+    holdTimer?.cancel();
+    holdTimer = Timer(holdToDragDelay, () {
+      if (!mounted) {
+        return;
+      }
+      if (activePointer != event.pointer) {
+        return;
+      }
+      isDraggingSpawner = true;
+    });
+  }
+
+  /// 누른 채 이동이 확인되면 X축 스포너를 따라오게 만듭니다.
+  void updatePointerTracking(PointerMoveEvent event, double width) {
+    if (activePointer != event.pointer) {
+      return;
+    }
+    final Offset? downPosition = pointerDownPosition;
+    if (downPosition == null) {
+      return;
+    }
+    final double distance = (event.localPosition - downPosition).distance;
+    if (!isDraggingSpawner && distance >= dragActivationDistance) {
+      holdTimer?.cancel();
+      isDraggingSpawner = true;
+    }
+    if (!isDraggingSpawner) {
+      return;
+    }
+    moveSpawnerForLocalDx(event.localPosition.dx, width);
+  }
+
+  /// 포인터를 떼는 순간 마지막 위치에서 스톤을 낙하시킵니다.
+  void endPointerTracking(PointerUpEvent event, double width) {
+    if (activePointer != event.pointer) {
+      return;
+    }
+    holdTimer?.cancel();
+    dropStoneAtLocalDx(event.localPosition.dx, width);
+    resetPointerTracking();
+  }
+
+  /// 취소된 포인터 세션의 입력 상태를 정리합니다.
+  void cancelPointerTracking(PointerCancelEvent event) {
+    if (activePointer != event.pointer) {
+      return;
+    }
+    holdTimer?.cancel();
+    resetPointerTracking();
+  }
+
+  void resetPointerTracking() {
+    activePointer = null;
+    pointerDownPosition = null;
+    isDraggingSpawner = false;
   }
 
   Future<void> prepareAssetsAndGame() async {
@@ -166,15 +244,18 @@ class SuikaScreenState extends State<SuikaScreen> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(28),
-            child: GestureDetector(
+            child: Listener(
               behavior: HitTestBehavior.opaque,
-              onPanDown: (DragDownDetails details) {
-                moveSpawnerForLocalDx(details.localPosition.dx, width);
+              onPointerDown: (PointerDownEvent event) {
+                beginPointerTracking(event, width);
               },
-              onPanUpdate: (DragUpdateDetails details) {
-                moveSpawnerForLocalDx(details.localPosition.dx, width);
+              onPointerMove: (PointerMoveEvent event) {
+                updatePointerTracking(event, width);
               },
-              onPanEnd: (_) => handlePanEnd(),
+              onPointerUp: (PointerUpEvent event) {
+                endPointerTracking(event, width);
+              },
+              onPointerCancel: cancelPointerTracking,
               child: GameWidget<SuikaGame>(
                 key: ValueKey<int>(sessionVersion),
                 game: game,
@@ -467,72 +548,86 @@ class SuikaScreenState extends State<SuikaScreen> {
 
   Widget buildGameScaffold(SuikaGame game) {
     return Scaffold(
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: <Color>[
-              Color(0xFF1D1E24),
-              Color(0xFF2E1F1A),
-              Color(0xFF5C3D2E),
-            ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
-            child: Column(
-              children: <Widget>[
-                buildHud(),
-                const SizedBox(height: 6),
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (BuildContext context, BoxConstraints constraints) {
-                      final double boardWidth = constraints.maxWidth;
-                      final double boardHeight =
-                          boardWidth / SuikaGame.boardAspectRatio;
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: <Widget>[
+          buildStackingStyleBackground(),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+              child: Column(
+                children: <Widget>[
+                  buildHud(),
+                  const SizedBox(height: 6),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (
+                        BuildContext context,
+                        BoxConstraints constraints,
+                      ) {
+                        final double boardWidth = constraints.maxWidth;
+                        final double boardHeight =
+                            boardWidth / SuikaGame.boardAspectRatio;
 
-                      return Align(
-                        alignment: Alignment.topCenter,
-                        child: SizedBox(
-                          width: boardWidth,
-                          height: boardHeight,
-                          child: Stack(
-                            children: <Widget>[
-                              buildInteractiveGameLayer(game),
-                              buildGameOverOverlay(),
-                            ],
+                        return Align(
+                          alignment: Alignment.topCenter,
+                          child: SizedBox(
+                            width: boardWidth,
+                            height: boardHeight,
+                            child: Stack(
+                              children: <Widget>[
+                                buildInteractiveGameLayer(game),
+                                buildGameOverOverlay(),
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 
   Widget buildLoadingScaffold({required Widget child}) {
     return Scaffold(
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: <Color>[
-              Color(0xFF1D1E24),
-              Color(0xFF2E1F1A),
-              Color(0xFF5C3D2E),
-            ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: <Widget>[
+          buildStackingStyleBackground(),
+          Center(
+            child: Padding(padding: const EdgeInsets.all(24), child: child),
           ),
-        ),
-        child: Center(child: Padding(padding: const EdgeInsets.all(24), child: child)),
+        ],
       ),
+    );
+  }
+
+  Widget buildStackingStyleBackground() {
+    return Stack(
+      children: const <Widget>[
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              stops: <double>[0.0, 0.3, 1.0],
+              colors: <Color>[
+                Color(0xFF997FFF),
+                Color(0xFFF293FF),
+                Color(0xFFFFD582),
+              ],
+            ),
+          ),
+          child: SizedBox.expand(),
+        ),
+        ParticleBackground(),
+      ],
     );
   }
 }
