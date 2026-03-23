@@ -1121,6 +1121,7 @@ class _AnimatedScoreValueState extends State<AnimatedScoreValue> {
           style: const TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w800,
+            color: Color(0xFFF7F3E9),
             fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
           ),
         );

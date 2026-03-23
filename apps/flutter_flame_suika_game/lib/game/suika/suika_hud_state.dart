@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_flame_game_2/game/suika/stone_spec.dart';
 
 /// Flutter HUD와 Flame 게임 사이의 반응형 상태를 중계합니다.
@@ -58,27 +59,27 @@ class SuikaHudState {
 
   /// 점수와 게임오버 플래그를 초기값으로 돌립니다.
   void resetForNewGame() {
-    score.value = 0;
-    comboPendingBonus.value = 0;
-    comboRemainingSeconds.value = 0;
-    comboEarnedScore.value = 0;
-    comboActiveDurationSeconds.value = 0;
-    isComboActive.value = false;
-    isPaused.value = false;
-    isGameOver.value = false;
+    _setValue(score, 0);
+    _setValue(comboPendingBonus, 0);
+    _setValue(comboRemainingSeconds, 0);
+    _setValue(comboEarnedScore, 0);
+    _setValue(comboActiveDurationSeconds, 0);
+    _setValue(isComboActive, false);
+    _setValue(isPaused, false);
+    _setValue(isGameOver, false);
   }
 
   /// 최고 점수를 포함해 현재 점수를 갱신합니다.
   void setScore(int nextScore) {
-    score.value = nextScore;
+    _setValue(score, nextScore);
     if (nextScore > bestScore.value) {
-      bestScore.value = nextScore;
+      _setValue(bestScore, nextScore);
     }
   }
 
   /// 다음 미리보기 스톤을 갱신합니다.
   void setNextStone(StoneSpec spec) {
-    nextStone.value = spec;
+    _setValue(nextStone, spec);
   }
 
   /// 특정 단계 스톤을 도감에서 공개 상태로 전환합니다.
@@ -87,7 +88,7 @@ class SuikaHudState {
     if (current.contains(spec.stage)) {
       return;
     }
-    revealedStages.value = <int>{...current, spec.stage};
+    _setValue(revealedStages, <int>{...current, spec.stage});
   }
 
   /// 콤보 HUD 상태를 한 번에 갱신합니다.
@@ -96,9 +97,9 @@ class SuikaHudState {
     required double remainingSeconds,
     required int pendingBonus,
   }) {
-    isComboActive.value = active;
-    comboRemainingSeconds.value = remainingSeconds;
-    comboPendingBonus.value = pendingBonus;
+    _setValue(isComboActive, active);
+    _setValue(comboRemainingSeconds, remainingSeconds);
+    _setValue(comboPendingBonus, pendingBonus);
   }
 
   /// 세션 전체 콤보 통계를 HUD에 반영합니다.
@@ -106,23 +107,42 @@ class SuikaHudState {
     required int earnedScore,
     required double activeDurationSeconds,
   }) {
-    comboEarnedScore.value = earnedScore;
-    comboActiveDurationSeconds.value = activeDurationSeconds;
+    _setValue(comboEarnedScore, earnedScore);
+    _setValue(comboActiveDurationSeconds, activeDurationSeconds);
   }
 
   /// 콤보 시작 문구를 한 번 재생합니다.
   void triggerComboPulse() {
-    comboPulseToken.value += 1;
+    _setValue(comboPulseToken, comboPulseToken.value + 1);
   }
 
   /// 일시정지 상태를 HUD에 반영합니다.
   void setPaused(bool value) {
-    isPaused.value = value;
+    _setValue(isPaused, value);
   }
 
   /// 게임오버를 HUD에 반영합니다.
   void setGameOver(bool value) {
-    isGameOver.value = value;
+    _setValue(isGameOver, value);
+  }
+
+  /// 빌드 중 알림 충돌을 피하기 위해 필요하면 프레임 종료 후 갱신합니다.
+  void _setValue<T>(ValueNotifier<T> notifier, T value) {
+    if (notifier.value == value) {
+      return;
+    }
+    final SchedulerPhase phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.idle ||
+        phase == SchedulerPhase.postFrameCallbacks) {
+      notifier.value = value;
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (notifier.value == value) {
+        return;
+      }
+      notifier.value = value;
+    });
   }
 
   /// 생성한 노티파이어를 정리합니다.

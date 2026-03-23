@@ -52,6 +52,7 @@ class GameSelectScreen extends StatelessWidget {
                         fontSize: 34,
                         fontWeight: FontWeight.w800,
                         height: 1.15,
+                        color: Color(0xFFF7F3E9),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -144,6 +145,7 @@ class GameSelectScreen extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
+                        color: Color(0xFFF7F3E9),
                       ),
                     ),
                     const SizedBox(height: 8),
