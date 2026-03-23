@@ -280,16 +280,29 @@ class SuikaScreenState extends State<SuikaScreen> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: <Widget>[
             Expanded(child: buildScorePanel()),
-            const SizedBox(width: 10),
-            buildNextStonePreview(),
-            const SizedBox(width: 10),
-            buildRestartButton(),
+            const SizedBox(width: 12),
+            buildHudActions(),
           ],
         ),
       ),
+    );
+  }
+
+  /// 우측 HUD 액션 묶음을 같은 기준선으로 정렬합니다.
+  Widget buildHudActions() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: <Widget>[
+        buildNextStonePreview(),
+        const SizedBox(width: 10),
+        buildCatalogButton(),
+        const SizedBox(width: 10),
+        buildRestartButton(),
+      ],
     );
   }
 
@@ -298,25 +311,37 @@ class SuikaScreenState extends State<SuikaScreen> {
     return ValueListenableBuilder<int>(
       valueListenable: hudState.score,
       builder: (BuildContext context, int score, Widget? child) {
-        return ValueListenableBuilder<int>(
-          valueListenable: hudState.bestScore,
-          builder: (BuildContext context, int best, Widget? child) {
-            return Row(
-              children: <Widget>[
-                buildMetricCard(label: 'SCORE', value: '$score'),
-                const SizedBox(width: 8),
-                buildMetricCard(label: 'BEST', value: '$best'),
-              ],
-            );
-          },
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Text(
+              'SCORE',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.4,
+                color: Color(0xFFD9CAB3),
+              ),
+            ),
+            const SizedBox(height: 6),
+            buildMetricCard(
+              minWidth: 148,
+              child: AnimatedScoreValue(score: score),
+            ),
+          ],
         );
       },
     );
   }
 
   /// 점수 카드 1개를 구성합니다.
-  Widget buildMetricCard({required String label, required String value}) {
-    return Expanded(
+  Widget buildMetricCard({
+    required Widget child,
+    double? minWidth,
+  }) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(minWidth: minWidth ?? 0),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: const Color(0xFF0C1016).withValues(alpha: 0.64),
@@ -326,30 +351,8 @@ class SuikaScreenState extends State<SuikaScreen> {
           ),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.2,
-                  color: Color(0xFFF7C59F),
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: child,
         ),
       ),
     );
@@ -360,48 +363,128 @@ class SuikaScreenState extends State<SuikaScreen> {
     return ValueListenableBuilder<StoneSpec>(
       valueListenable: hudState.nextStone,
       builder: (BuildContext context, StoneSpec spec, Widget? child) {
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const Text(
-              'NEXT',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.4,
-                color: Color(0xFFD9CAB3),
+        return SizedBox(
+          width: 64,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              const Text(
+                'NEXT',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.4,
+                  color: Color(0xFFD9CAB3),
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              width: 54,
-              height: 54,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                color: const Color(0xFF201A17),
-                boxShadow: <BoxShadow>[
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.18),
-                    blurRadius: 18,
-                  ),
-                ],
-              ),
-              alignment: Alignment.center,
-              clipBehavior: Clip.antiAlias,
-              child: Padding(
-                padding: const EdgeInsets.all(5),
-                child: preparedAssets == null
-                    ? const SizedBox.shrink()
-                    : RawImage(
-                        image: preparedAssets!.assetFor(spec).image,
-                        fit: BoxFit.contain,
+              const SizedBox(height: 6),
+              Center(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    color: const Color(0xFF201A17),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.18),
+                        blurRadius: 18,
                       ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  clipBehavior: Clip.antiAlias,
+                  child: Padding(
+                    padding: const EdgeInsets.all(5),
+                    child: preparedAssets == null
+                        ? const SizedBox.shrink()
+                        : RawImage(
+                            image: preparedAssets!.assetFor(spec).image,
+                            fit: BoxFit.contain,
+                          ),
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
+    );
+  }
+
+  /// 단계별 스톤 도감을 바텀시트로 엽니다.
+  Future<void> openStoneCatalogSheet() async {
+    final SuikaGame? game = currentGame;
+    final bool shouldResume =
+        game != null && !game.isGameOver && !game.paused;
+    if (shouldResume) {
+      game.pauseEngine();
+      hudState.setPaused(true);
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return buildStoneCatalogSheet();
+      },
+    );
+
+    if (!mounted) {
+      return;
+    }
+    if (!shouldResume) {
+      return;
+    }
+    final SuikaGame? latestGame = currentGame;
+    if (latestGame == null || latestGame.isGameOver) {
+      return;
+    }
+    latestGame.resumeEngine();
+    hudState.setPaused(false);
+  }
+
+  /// 도감 버튼을 HUD 우측 액션으로 제공합니다.
+  Widget buildCatalogButton() {
+    return SizedBox(
+      width: 64,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          const Text(
+            'CATALOG',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+              color: Color(0xFFD9CAB3),
+            ),
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: 54,
+            height: 54,
+            child: FilledButton(
+              onPressed: openStoneCatalogSheet,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF28303A),
+                foregroundColor: const Color(0xFFFDF7ED),
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: const Icon(Icons.auto_awesome_mosaic_rounded, size: 24),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -422,6 +505,181 @@ class SuikaScreenState extends State<SuikaScreen> {
         child: const Text(
           'Restart',
           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+        ),
+      ),
+    );
+  }
+
+  /// 공개/비공개 단계를 함께 보여주는 도감 바텀시트 본문입니다.
+  Widget buildStoneCatalogSheet() {
+    final PreparedSuikaAssets assets = preparedAssets!;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFF11151C),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        border: Border.all(
+          color: const Color(0xFFF7F3E9).withValues(alpha: 0.08),
+        ),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 20,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+          child: ValueListenableBuilder<Set<int>>(
+            valueListenable: hudState.revealedStages,
+            builder: (
+              BuildContext context,
+              Set<int> revealedStages,
+              Widget? child,
+            ) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Center(
+                    child: Container(
+                      width: 38,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF7F3E9).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Stone Catalog',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFFF7F3E9),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    '1~6 단계는 기본 공개됩니다. 7~9 단계는 게임에서 처음 등장하면 해금됩니다.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.45,
+                      color: Color(0xFFD9CAB3),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: assets.catalog.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 0.9,
+                        ),
+                    itemBuilder: (BuildContext context, int index) {
+                      final StoneSpec spec = assets.catalog[index];
+                      final bool isRevealed = revealedStages.contains(
+                        spec.stage,
+                      );
+                      return buildStoneCatalogTile(
+                        spec: spec,
+                        asset: assets.assetFor(spec),
+                        isRevealed: isRevealed,
+                      );
+                    },
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 단계별 도감 타일 1개를 렌더링합니다.
+  Widget buildStoneCatalogTile({
+    required StoneSpec spec,
+    required PreparedStoneAsset asset,
+    required bool isRevealed,
+  }) {
+    final Color borderColor = isRevealed
+        ? const Color(0xFFF7C59F).withValues(alpha: 0.24)
+        : const Color(0xFFF7F3E9).withValues(alpha: 0.08);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFF171C24),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: borderColor),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+        child: Column(
+          children: <Widget>[
+            Expanded(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0C1016).withValues(alpha: 0.74),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Center(
+                  child: isRevealed
+                      ? Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: RawImage(image: asset.image, fit: BoxFit.contain),
+                        )
+                      : FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            child: Text(
+                              '?',
+                              style: TextStyle(
+                                fontSize: 54,
+                                height: 1,
+                                fontWeight: FontWeight.w800,
+                                color: const Color(
+                                  0xFFF7F3E9,
+                                ).withValues(alpha: 0.84),
+                              ),
+                            ),
+                          ),
+                        ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Stone ${spec.label}',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFFF7F3E9),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              isRevealed ? 'Revealed' : 'Locked',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: isRevealed
+                    ? const Color(0xFFF7C59F)
+                    : const Color(0xFFD9CAB3),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -628,6 +886,52 @@ class SuikaScreenState extends State<SuikaScreen> {
         ),
         ParticleBackground(),
       ],
+    );
+  }
+}
+
+class AnimatedScoreValue extends StatefulWidget {
+  const AnimatedScoreValue({super.key, required this.score});
+
+  final int score;
+
+  @override
+  State<AnimatedScoreValue> createState() => _AnimatedScoreValueState();
+}
+
+class _AnimatedScoreValueState extends State<AnimatedScoreValue> {
+  late int from;
+  late int to;
+
+  @override
+  void initState() {
+    super.initState();
+    from = widget.score;
+    to = widget.score;
+  }
+
+  @override
+  void didUpdateWidget(covariant AnimatedScoreValue oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.score == to) {
+      return;
+    }
+    from = to;
+    to = widget.score;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: from.toDouble(), end: to.toDouble()),
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      builder: (BuildContext context, double value, Widget? child) {
+        return Text(
+          value.round().toString(),
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+        );
+      },
     );
   }
 }

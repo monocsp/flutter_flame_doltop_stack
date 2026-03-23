@@ -12,6 +12,7 @@ class SuikaHudState {
        nextStone = ValueNotifier<StoneSpec>(
          (initialCatalog ?? StoneCatalog.droppableValues()).first,
        ),
+       revealedStages = ValueNotifier<Set<int>>(<int>{0, 1, 2, 3, 4, 5}),
        isPaused = ValueNotifier<bool>(false),
        isGameOver = ValueNotifier<bool>(false);
 
@@ -23,6 +24,9 @@ class SuikaHudState {
 
   /// 다음 드롭 대상 미리보기를 제공합니다.
   final ValueNotifier<StoneSpec> nextStone;
+
+  /// 도감에서 공개된 단계 목록을 보관합니다.
+  final ValueNotifier<Set<int>> revealedStages;
 
   /// 일시정지 상태를 노출합니다.
   final ValueNotifier<bool> isPaused;
@@ -50,6 +54,15 @@ class SuikaHudState {
     nextStone.value = spec;
   }
 
+  /// 특정 단계 스톤을 도감에서 공개 상태로 전환합니다.
+  void revealStone(StoneSpec spec) {
+    final Set<int> current = revealedStages.value;
+    if (current.contains(spec.stage)) {
+      return;
+    }
+    revealedStages.value = <int>{...current, spec.stage};
+  }
+
   /// 일시정지 상태를 HUD에 반영합니다.
   void setPaused(bool value) {
     isPaused.value = value;
@@ -65,6 +78,7 @@ class SuikaHudState {
     score.dispose();
     bestScore.dispose();
     nextStone.dispose();
+    revealedStages.dispose();
     isPaused.dispose();
     isGameOver.dispose();
   }

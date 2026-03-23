@@ -143,6 +143,8 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     ]);
     currentStone = pickRandomDroppableStone();
     nextStone = pickRandomDroppableStone();
+    hudState.revealStone(currentStone);
+    hudState.revealStone(nextStone);
     hudState.setNextStone(nextStone);
     spawnX = boardWidth / 2;
   }
@@ -519,6 +521,7 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     Vector2? initialLinearVelocity,
   }) {
     stoneSequence += 1;
+    hudState.revealStone(spec);
     final PreparedStoneAsset prepared = preparedAssets.assetFor(spec);
     return SuikaStoneBody(
       id: stoneSequence,

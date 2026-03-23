@@ -64,22 +64,6 @@ class SuikaStoneBody extends BodyComponent<SuikaGame> with ContactCallbacks {
         anchor: Anchor.center,
       ),
     );
-    add(
-      TextComponent(
-        text: spec.label,
-        anchor: Anchor.center,
-        textRenderer: TextPaint(
-          style: TextStyle(
-            color: const Color(0xFFFDF7ED),
-            fontSize: spec.radius * 0.82,
-            fontWeight: FontWeight.w900,
-            shadows: const <Shadow>[
-              Shadow(color: Color(0xCC000000), blurRadius: 6),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   @override
