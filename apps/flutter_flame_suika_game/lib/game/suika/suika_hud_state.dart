@@ -13,6 +13,8 @@ class SuikaHudState {
       revealedStages = ValueNotifier<Set<int>>(<int>{0, 1, 2, 3, 4, 5}),
       comboPendingBonus = ValueNotifier<int>(0),
       comboRemainingSeconds = ValueNotifier<double>(0),
+      comboEarnedScore = ValueNotifier<int>(0),
+      comboActiveDurationSeconds = ValueNotifier<double>(0),
       isComboActive = ValueNotifier<bool>(false),
       comboPulseToken = ValueNotifier<int>(0),
       isPaused = ValueNotifier<bool>(false),
@@ -36,6 +38,12 @@ class SuikaHudState {
   /// 현재 콤보 유지 시간입니다.
   final ValueNotifier<double> comboRemainingSeconds;
 
+  /// 세션 동안 콤보로 획득한 총 점수입니다.
+  final ValueNotifier<int> comboEarnedScore;
+
+  /// 세션 동안 콤보가 활성화된 누적 시간입니다.
+  final ValueNotifier<double> comboActiveDurationSeconds;
+
   /// 현재 콤보 활성 여부입니다.
   final ValueNotifier<bool> isComboActive;
 
@@ -53,6 +61,8 @@ class SuikaHudState {
     score.value = 0;
     comboPendingBonus.value = 0;
     comboRemainingSeconds.value = 0;
+    comboEarnedScore.value = 0;
+    comboActiveDurationSeconds.value = 0;
     isComboActive.value = false;
     isPaused.value = false;
     isGameOver.value = false;
@@ -91,6 +101,15 @@ class SuikaHudState {
     comboPendingBonus.value = pendingBonus;
   }
 
+  /// 세션 전체 콤보 통계를 HUD에 반영합니다.
+  void setComboSessionStats({
+    required int earnedScore,
+    required double activeDurationSeconds,
+  }) {
+    comboEarnedScore.value = earnedScore;
+    comboActiveDurationSeconds.value = activeDurationSeconds;
+  }
+
   /// 콤보 시작 문구를 한 번 재생합니다.
   void triggerComboPulse() {
     comboPulseToken.value += 1;
@@ -114,6 +133,8 @@ class SuikaHudState {
     revealedStages.dispose();
     comboPendingBonus.dispose();
     comboRemainingSeconds.dispose();
+    comboEarnedScore.dispose();
+    comboActiveDurationSeconds.dispose();
     isComboActive.dispose();
     comboPulseToken.dispose();
     isPaused.dispose();

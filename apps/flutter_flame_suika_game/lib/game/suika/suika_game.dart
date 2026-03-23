@@ -117,6 +117,12 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   /// 아직 정산되지 않은 콤보 보너스입니다.
   int pendingComboBonus = 0;
 
+  /// 세션 동안 콤보로 획득한 총 점수입니다.
+  int totalComboEarnedScore = 0;
+
+  /// 세션 동안 콤보가 유지된 누적 시간입니다.
+  double totalComboActiveDurationSeconds = 0;
+
   /// 게임오버 플래그입니다.
   bool isGameOver = false;
 
@@ -541,6 +547,10 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
       remainingSeconds: comboRemainingSeconds,
       pendingBonus: pendingComboBonus,
     );
+    hudState.setComboSessionStats(
+      earnedScore: totalComboEarnedScore,
+      activeDurationSeconds: totalComboActiveDurationSeconds,
+    );
   }
 
   /// 합체가 한 번 발생했을 때 콤보 예열 또는 활성 콤보를 갱신합니다.
@@ -594,6 +604,7 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   /// 콤보 타이머와 예열 타이머를 매 틱 갱신합니다.
   void updateComboState(double dt) {
     if (comboRemainingSeconds > 0) {
+      totalComboActiveDurationSeconds += dt;
       comboRemainingSeconds = max(0, comboRemainingSeconds - dt);
       if (comboRemainingSeconds == 0) {
         flushPendingComboBonus();
@@ -626,6 +637,7 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     comboWarmupElapsedSeconds = double.infinity;
     pendingComboBonus = 0;
     if (bonus > 0) {
+      totalComboEarnedScore += bonus;
       setScore(score + bonus);
     }
     syncComboHud();
