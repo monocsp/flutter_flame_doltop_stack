@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_flame_breath_journey_game/ui/breath_journey_home_screen.dart';
+import 'package:flutter_flame_breath_journey_game/ui/intro_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,9 +15,9 @@ class BreathJourneyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF10151D),
+        scaffoldBackgroundColor: const Color(0xFF0D1F2D),
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF78C0E0),
+          seedColor: const Color(0xFF7ADAA5),
           brightness: Brightness.dark,
         ),
         textTheme: Theme.of(context).textTheme.apply(
@@ -25,7 +25,7 @@ class BreathJourneyApp extends StatelessWidget {
           displayColor: const Color(0xFFF7F3E9),
         ),
       ),
-      home: const BreathJourneyHomeScreen(),
+      home: const IntroScreen(),
     );
   }
 }

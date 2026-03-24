@@ -1,9 +1,10 @@
+import 'dart:math' show sin;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_flame_game_2/main.dart';
 
-enum GameCardTitleStyle { normal, rising, growing }
+enum GameCardTitleStyle { normal, rising, growing, breathing }
 
 /// 앱 시작 시 플레이할 게임을 선택할 수 있게 합니다.
 class GameSelectScreen extends StatelessWidget {
@@ -61,7 +62,7 @@ class GameSelectScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 14),
                     const Text(
-                      '현재 플레이 가능한 스택 게임과 수박게임 모드를 선택해 실행할 수 있습니다.',
+                      '스택 게임, 수박게임, 호흡 여정을 선택해 실행할 수 있습니다.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 15,
@@ -86,6 +87,16 @@ class GameSelectScreen extends StatelessWidget {
                       titleStyle: GameCardTitleStyle.growing,
                       accentColor: const Color(0xFFF28C28),
                       onTap: () => openGame(context, const SuikaGameRoute()),
+                    ),
+                    const SizedBox(height: 16),
+                    buildGameCard(
+                      context: context,
+                      title: '어디까지 날아가는거에요?',
+                      description: '호흡으로 민들레 씨앗을 날려보세요. 오래 내쉴수록 멀리 날아가요',
+                      titleStyle: GameCardTitleStyle.breathing,
+                      accentColor: const Color(0xFF7ADAA5),
+                      onTap: () =>
+                          openGame(context, const BreathJourneyRoute()),
                     ),
                   ],
                 ),
@@ -178,6 +189,8 @@ class GameSelectScreen extends StatelessWidget {
         return RisingTitleText(text: title);
       case GameCardTitleStyle.growing:
         return GrowingTitleText(text: title);
+      case GameCardTitleStyle.breathing:
+        return BreathingTitleText(text: title);
       case GameCardTitleStyle.normal:
         return Text(
           title,
@@ -276,6 +289,85 @@ class GrowingTitleText extends StatelessWidget {
                 ),
               );
             }),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class BreathingTitleText extends StatefulWidget {
+  const BreathingTitleText({super.key, required this.text});
+
+  final String text;
+
+  @override
+  State<BreathingTitleText> createState() => _BreathingTitleTextState();
+}
+
+class _BreathingTitleTextState extends State<BreathingTitleText>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3000),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<String> glyphs = widget.text.split('');
+    return SizedBox(
+      height: 36,
+      child: Align(
+        alignment: Alignment.bottomLeft,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.bottomLeft,
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (BuildContext context, Widget? child) {
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children:
+                    List<Widget>.generate(glyphs.length, (int index) {
+                      final double phase = index / glyphs.length;
+                      final double wave =
+                          sin((_controller.value + phase) * 3.14159 * 2) *
+                              0.5 +
+                          0.5;
+                      final double opacity = lerpDouble(0.5, 1.0, wave)!;
+                      final double scale = lerpDouble(0.95, 1.05, wave)!;
+                      return Opacity(
+                        opacity: opacity,
+                        child: Transform.scale(
+                          scale: scale,
+                          child: Text(
+                            glyphs[index],
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFF7F3E9),
+                              letterSpacing: -0.6,
+                              height: 1,
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+              );
+            },
           ),
         ),
       ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_flame_breath_journey_game/ui/intro_screen.dart';
 import 'package:flutter_flame_game/ui/app_shell.dart';
 import 'package:flutter_flame_game_2/ui/game_select_screen.dart';
 import 'package:flutter_flame_game_2/ui/suika_screen.dart';
@@ -54,5 +55,16 @@ class SuikaGameRoute extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SuikaScreen();
+  }
+}
+
+/// 호흡 여정 게임을 라우트 단위로 제공합니다.
+class BreathJourneyRoute extends StatelessWidget {
+  /// 호흡 여정 라우트를 생성합니다.
+  const BreathJourneyRoute({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const IntroScreen();
   }
 }
