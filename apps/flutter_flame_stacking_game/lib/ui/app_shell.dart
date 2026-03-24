@@ -8,6 +8,24 @@ import '../game/stacking_game.dart';
 import 'onboarding_screen.dart';
 import 'widgets/particle_background.dart';
 
+const LinearGradient _doltopBackgroundGradient = LinearGradient(
+  begin: Alignment.topCenter,
+  end: Alignment.bottomCenter,
+  stops: <double>[0.0, 0.3, 1.0],
+  colors: <Color>[Color(0xFF997FFF), Color(0xFFF293FF), Color(0xFFFFD582)],
+);
+
+const List<String> _doltopBackgroundAssetPaths = <String>[
+  'assets/background/1.png',
+  'assets/background/2.png',
+  'assets/background/3.png',
+  'assets/background/4.png',
+  'assets/background/5.png',
+  'assets/background/6.png',
+];
+
+const String _doltopBackgroundBaseAssetPath = 'assets/background/base.png';
+
 /// Flutter 앱의 루트 셸입니다.
 ///
 /// `MaterialApp` 설정과 게임 화면 라우팅을 담당합니다.
@@ -23,7 +41,12 @@ class StackingApp extends StatelessWidget {
         colorSchemeSeed: Colors.blue,
         fontFamily: 'Pretendard',
       ),
-      home: const OnboardingScreen(),
+      home: const OnboardingScreen(
+        backgroundGradient: _doltopBackgroundGradient,
+        backgroundWidget: ParticleBackground(),
+        backgroundAssetPaths: _doltopBackgroundAssetPaths,
+        backgroundBaseAssetPath: _doltopBackgroundBaseAssetPath,
+      ),
     );
   }
 }
