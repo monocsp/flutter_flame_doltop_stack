@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_flame_breath_journey_game/ui/intro_screen.dart';
 import 'package:flutter_flame_game/ui/app_shell.dart';
+import 'package:flutter_flame_game/ui/widgets/particle_background.dart';
 import 'package:flutter_flame_game_2/ui/game_select_screen.dart';
 import 'package:flutter_flame_game_2/ui/suika_screen.dart';
 
@@ -41,9 +42,32 @@ class StackGameRoute extends StatelessWidget {
   /// 스택 게임 라우트를 생성합니다.
   const StackGameRoute({super.key});
 
+  static const LinearGradient _backgroundGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    stops: <double>[0.0, 0.3, 1.0],
+    colors: <Color>[Color(0xFF997FFF), Color(0xFFF293FF), Color(0xFFFFD582)],
+  );
+
+  static const List<String> _backgroundAssetPaths = <String>[
+    'assets/background/1.png',
+    'assets/background/2.png',
+    'assets/background/3.png',
+    'assets/background/4.png',
+    'assets/background/5.png',
+    'assets/background/6.png',
+  ];
+
+  static const String _backgroundBaseAssetPath = 'assets/background/base.png';
+
   @override
   Widget build(BuildContext context) {
-    return const FlameScreen();
+    return const FlameScreen(
+      backgroundGradient: _backgroundGradient,
+      backgroundWidget: ParticleBackground(),
+      backgroundAssetPaths: _backgroundAssetPaths,
+      backgroundBaseAssetPath: _backgroundBaseAssetPath,
+    );
   }
 }
 
