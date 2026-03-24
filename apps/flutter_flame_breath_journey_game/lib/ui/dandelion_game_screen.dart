@@ -578,6 +578,7 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
             const SizedBox(height: 36),
             SvgPicture.asset(
               'assets/dandelion.svg',
+              package: 'flutter_flame_breath_journey_game',
               width: 200,
               height: 300,
             ),
@@ -605,6 +606,7 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
                 scale: seed.size,
                 child: SvgPicture.asset(
                   'assets/dandelion_seed.svg',
+                  package: 'flutter_flame_breath_journey_game',
                   width: 40,
                   height: 50,
                 ),
@@ -618,6 +620,7 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
           top: cy - 150,
           child: SvgPicture.asset(
             'assets/dandelion.svg',
+            package: 'flutter_flame_breath_journey_game',
             width: 200,
             height: 300,
           ),

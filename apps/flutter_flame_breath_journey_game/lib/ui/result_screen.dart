@@ -168,6 +168,7 @@ class _ResultScreenState extends State<ResultScreen>
               opacity: 0.12,
               child: SvgPicture.asset(
                 'assets/dandelion.svg',
+                package: 'flutter_flame_breath_journey_game',
                 width: 180,
                 height: 270,
               ),
@@ -195,6 +196,7 @@ class _ResultScreenState extends State<ResultScreen>
                       scale: _seedSizes[i],
                       child: SvgPicture.asset(
                         'assets/dandelion_seed.svg',
+                        package: 'flutter_flame_breath_journey_game',
                         width: 40,
                         height: 50,
                       ),
@@ -204,6 +206,25 @@ class _ResultScreenState extends State<ResultScreen>
               },
             );
           }),
+
+          // Back button
+          Positioned(
+            left: 12,
+            top: MediaQuery.of(context).padding.top + 8,
+            child: IconButton(
+              onPressed: () => Navigator.of(context).popUntil(
+                (route) => route.isFirst,
+              ),
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.white.withValues(alpha: 0.07),
+              ),
+              icon: const Icon(
+                Icons.arrow_back_rounded,
+                color: Color(0xFFF7F3E9),
+                size: 22,
+              ),
+            ),
+          ),
 
           // Content
           SafeArea(

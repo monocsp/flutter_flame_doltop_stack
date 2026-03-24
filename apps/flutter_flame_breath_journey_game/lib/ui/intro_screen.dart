@@ -90,6 +90,22 @@ class _IntroScreenState extends State<IntroScreen> {
             onPageChanged: (page) => setState(() => _currentPage = page),
             children: pages,
           ),
+          // Back button
+          Positioned(
+            left: 12,
+            top: MediaQuery.of(context).padding.top + 8,
+            child: IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.white.withValues(alpha: 0.07),
+              ),
+              icon: const Icon(
+                Icons.arrow_back_rounded,
+                color: Color(0xFFF7F3E9),
+                size: 22,
+              ),
+            ),
+          ),
           // Dot indicators
           Positioned(
             right: 18,
@@ -133,6 +149,7 @@ class _IntroScreenState extends State<IntroScreen> {
               opacity: 0.18,
               child: SvgPicture.asset(
                 'assets/dandelion.svg',
+                package: 'flutter_flame_breath_journey_game',
                 width: 200,
                 height: 300,
               ),
@@ -214,6 +231,7 @@ class _IntroScreenState extends State<IntroScreen> {
                 angle: -0.3,
                 child: SvgPicture.asset(
                   'assets/dandelion_seed.svg',
+                  package: 'flutter_flame_breath_journey_game',
                   width: 60,
                   height: 60,
                 ),
@@ -229,6 +247,7 @@ class _IntroScreenState extends State<IntroScreen> {
                 angle: 0.5,
                 child: SvgPicture.asset(
                   'assets/dandelion_seed.svg',
+                  package: 'flutter_flame_breath_journey_game',
                   width: 45,
                   height: 45,
                 ),
@@ -242,6 +261,7 @@ class _IntroScreenState extends State<IntroScreen> {
               opacity: 0.08,
               child: SvgPicture.asset(
                 'assets/dandelion_seed.svg',
+                package: 'flutter_flame_breath_journey_game',
                 width: 35,
                 height: 35,
               ),
