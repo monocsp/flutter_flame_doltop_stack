@@ -160,6 +160,20 @@ class _ResultScreenState extends State<ResultScreen>
             child: SizedBox.expand(),
           ),
 
+          // 민들레 본체 (하단 우측, 씨앗이 다 날아간 모습)
+          Positioned(
+            right: -20,
+            bottom: -60,
+            child: Opacity(
+              opacity: 0.12,
+              child: SvgPicture.asset(
+                'assets/dandelion.svg',
+                width: 180,
+                height: 270,
+              ),
+            ),
+          ),
+
           // Falling seeds (background layer)
           ...List.generate(_visualSeedCount, (i) {
             return AnimatedBuilder(

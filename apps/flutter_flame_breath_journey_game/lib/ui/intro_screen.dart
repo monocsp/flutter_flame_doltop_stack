@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'dandelion_game_screen.dart';
@@ -122,103 +123,167 @@ class _IntroScreenState extends State<IntroScreen> {
 
   Widget _buildHeroPage() {
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 36),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'DANDELION\nBREATH',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 2.8,
-                color: Color(0xFFFFD7A1),
+      child: Stack(
+        children: [
+          // 민들레 이미지 (우측 하단에 은은하게)
+          Positioned(
+            right: -30,
+            bottom: 60,
+            child: Opacity(
+              opacity: 0.18,
+              child: SvgPicture.asset(
+                'assets/dandelion.svg',
+                width: 200,
+                height: 300,
               ),
             ),
-            const SizedBox(height: 16),
-            const Text(
-              '민들레\n여정',
-              style: TextStyle(
-                fontSize: 60,
-                fontWeight: FontWeight.w900,
-                height: 1.0,
-                color: Color(0xFFF7F3E9),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              '호흡으로 민들레 씨앗을\n세상 끝까지 날려보세요',
-              style: TextStyle(
-                fontSize: 17,
-                height: 1.7,
-                color: Color(0xFFB0C9B8),
-              ),
-            ),
-            const SizedBox(height: 56),
-            Row(
-              children: const [
-                Text(
-                  '아래로 스크롤',
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 36),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'DANDELION\nBREATH',
                   style: TextStyle(
-                    color: Color(0xFF7ADAA5),
                     fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 2.8,
+                    color: Color(0xFFFFD7A1),
                   ),
                 ),
-                SizedBox(width: 6),
-                Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  color: Color(0xFF7ADAA5),
-                  size: 18,
+                const SizedBox(height: 16),
+                const Text(
+                  '민들레\n여정',
+                  style: TextStyle(
+                    fontSize: 60,
+                    fontWeight: FontWeight.w900,
+                    height: 1.0,
+                    color: Color(0xFFF7F3E9),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  '호흡으로 민들레 씨앗을\n세상 끝까지 날려보세요',
+                  style: TextStyle(
+                    fontSize: 17,
+                    height: 1.7,
+                    color: Color(0xFFB0C9B8),
+                  ),
+                ),
+                const SizedBox(height: 56),
+                Row(
+                  children: const [
+                    Text(
+                      '아래로 스크롤',
+                      style: TextStyle(
+                        color: Color(0xFF7ADAA5),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    SizedBox(width: 6),
+                    Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: Color(0xFF7ADAA5),
+                      size: 18,
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildStoryPage() {
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 36),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            Text(
-              '잠깐 멈춰\n호흡해봐요',
-              style: TextStyle(
-                fontSize: 44,
-                fontWeight: FontWeight.w900,
-                height: 1.1,
-                color: Color(0xFFF7F3E9),
+      child: Stack(
+        children: [
+          // 씨앗 이미지들 (떠다니는 느낌)
+          Positioned(
+            right: 30,
+            top: 120,
+            child: Opacity(
+              opacity: 0.15,
+              child: Transform.rotate(
+                angle: -0.3,
+                child: SvgPicture.asset(
+                  'assets/dandelion_seed.svg',
+                  width: 60,
+                  height: 60,
+                ),
               ),
             ),
-            SizedBox(height: 28),
-            Text(
-              '바람을 품은 민들레처럼,\n당신의 숨결도 어딘가에\n닿을 수 있어요.',
-              style: TextStyle(
-                fontSize: 18,
-                height: 1.75,
-                color: Color(0xFFB0C9B8),
+          ),
+          Positioned(
+            left: 20,
+            bottom: 140,
+            child: Opacity(
+              opacity: 0.12,
+              child: Transform.rotate(
+                angle: 0.5,
+                child: SvgPicture.asset(
+                  'assets/dandelion_seed.svg',
+                  width: 45,
+                  height: 45,
+                ),
               ),
             ),
-            SizedBox(height: 28),
-            Text(
-              '단 3번의 호흡으로\n민들레의 씨앗이 되어보세요.',
-              style: TextStyle(
-                fontSize: 15,
-                height: 1.65,
-                color: Color(0xFF7B9A8A),
+          ),
+          Positioned(
+            right: 60,
+            bottom: 200,
+            child: Opacity(
+              opacity: 0.08,
+              child: SvgPicture.asset(
+                'assets/dandelion_seed.svg',
+                width: 35,
+                height: 35,
               ),
             ),
-          ],
-        ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 36),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  '잠깐 멈춰\n호흡해봐요',
+                  style: TextStyle(
+                    fontSize: 44,
+                    fontWeight: FontWeight.w900,
+                    height: 1.1,
+                    color: Color(0xFFF7F3E9),
+                  ),
+                ),
+                SizedBox(height: 28),
+                Text(
+                  '바람을 품은 민들레처럼,\n당신의 숨결도 어딘가에\n닿을 수 있어요.',
+                  style: TextStyle(
+                    fontSize: 18,
+                    height: 1.75,
+                    color: Color(0xFFB0C9B8),
+                  ),
+                ),
+                SizedBox(height: 28),
+                Text(
+                  '단 3번의 호흡으로\n민들레의 씨앗이 되어보세요.',
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1.65,
+                    color: Color(0xFF7B9A8A),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

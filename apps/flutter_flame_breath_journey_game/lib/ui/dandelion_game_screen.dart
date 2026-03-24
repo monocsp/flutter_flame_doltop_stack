@@ -93,6 +93,11 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
   // ── Visual feedback (0.0 = silent, 1.0 = max breath) ──
   double _breathLevel = 0.0;
 
+  // ── No-detection hint ──
+  bool _showNoDetectionHint = false;
+  Timer? _noDetectionTimer;
+  bool _everDetectedThisRound = false;
+
   Timer? _countdownTimer;
   Timer? _seedSpawnTimer;
 
@@ -108,6 +113,7 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
     _ticker.dispose();
     _countdownTimer?.cancel();
     _seedSpawnTimer?.cancel();
+    _noDetectionTimer?.cancel();
     _noiseSubscription?.cancel();
     super.dispose();
   }
@@ -243,9 +249,21 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
       _consecutiveAboveTicks = 0;
       _breathActive = false;
       _breathLevel = 0;
+      _showNoDetectionHint = false;
+      _everDetectedThisRound = false;
     });
     _startNoiseListening();
     _startSeedSpawning();
+    _startNoDetectionTimer();
+  }
+
+  void _startNoDetectionTimer() {
+    _noDetectionTimer?.cancel();
+    _noDetectionTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted && _phase == _GamePhase.exhale && !_everDetectedThisRound) {
+        setState(() => _showNoDetectionHint = true);
+      }
+    });
   }
 
   // ─────────────────────────────────────────────
@@ -301,6 +319,15 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
       if (_consecutiveAboveTicks < _sustainedTicksRequired) return;
       _breathActive = true;
 
+      // ★ First detection → hide hint, cancel timer
+      if (!_everDetectedThisRound) {
+        _everDetectedThisRound = true;
+        _noDetectionTimer?.cancel();
+        if (_showNoDetectionHint) {
+          setState(() => _showNoDetectionHint = false);
+        }
+      }
+
       final count = normalized < 0.3 ? 1 : normalized < 0.65 ? 2 : 3;
       for (int i = 0; i < count; i++) {
         if (mounted) _spawnSeed(normalized);
@@ -332,10 +359,12 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
     _noiseSubscription = null;
     _seedSpawnTimer?.cancel();
     _seedSpawnTimer = null;
+    _noDetectionTimer?.cancel();
 
     setState(() {
       _phase = _GamePhase.roundBreak;
       _breathLevel = 0;
+      _showNoDetectionHint = false;
     });
 
     _round++;
@@ -513,45 +542,47 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
 
   Widget _buildInhalePhase() {
     return SafeArea(
-      child: Column(
-        children: [
-          const SizedBox(height: 44),
-          _buildRoundBadge(),
-          const SizedBox(height: 22),
-          const Text(
-            '숨을 크게 들이쉬세요',
-            style: TextStyle(
-              color: Color(0xFFF7F3E9),
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildRoundBadge(),
+            const SizedBox(height: 32),
+            const Text(
+              '숨을 크게 들이쉬세요',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFFF7F3E9),
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '$_countdown',
-            style: const TextStyle(
-              color: Color(0xFFFFD7A1),
-              fontSize: 56,
-              fontWeight: FontWeight.w900,
+            const SizedBox(height: 6),
+            Text(
+              '$_countdown',
+              style: const TextStyle(
+                color: Color(0xFFFFD7A1),
+                fontSize: 56,
+                fontWeight: FontWeight.w900,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          // ★ Calibration status
-          Text(
-            '주변 소음을 측정하고 있어요…',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.3),
-              fontSize: 12,
+            const SizedBox(height: 8),
+            // ★ Calibration status
+            Text(
+              '주변 소음을 측정하고 있어요…',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.3),
+                fontSize: 12,
+              ),
             ),
-          ),
-          const Spacer(),
-          SvgPicture.asset(
-            'assets/dandelion.svg',
-            width: 200,
-            height: 300,
-          ),
-          const Spacer(),
-        ],
+            const SizedBox(height: 36),
+            SvgPicture.asset(
+              'assets/dandelion.svg',
+              width: 200,
+              height: 300,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -624,6 +655,45 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
               const SizedBox(height: 18),
               // ★ Breath detection feedback
               _buildBreathIndicator(),
+              const SizedBox(height: 16),
+              // ★ No-detection hint (fade in after 2s of silence)
+              AnimatedOpacity(
+                opacity: _showNoDetectionHint ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 600),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 40),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFD7A1).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: const Color(0xFFFFD7A1).withValues(alpha: 0.25),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        color: Color(0xFFFFD7A1),
+                        size: 18,
+                      ),
+                      SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          '혹시 마이크에서 떨어져있거나,\n막혀있지 않나요?',
+                          style: TextStyle(
+                            color: Color(0xFFFFD7A1),
+                            fontSize: 13,
+                            height: 1.45,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               const Spacer(),
               Padding(
                 padding: const EdgeInsets.fromLTRB(36, 0, 36, 36),
