@@ -1,5 +1,9 @@
+import 'dart:ui' show lerpDouble;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_flame_game_2/main.dart';
+
+enum GameCardTitleStyle { normal, rising, growing }
 
 /// 앱 시작 시 플레이할 게임을 선택할 수 있게 합니다.
 class GameSelectScreen extends StatelessWidget {
@@ -68,16 +72,18 @@ class GameSelectScreen extends StatelessWidget {
                     const SizedBox(height: 28),
                     buildGameCard(
                       context: context,
-                      title: '스택게임',
-                      description: '현재 구현된 적층 플레이를 바로 실행합니다.',
+                      title: '어디까지 올라가는거에요?',
+                      description: '평온한 마음으로 돌탑을 조심히 쌓아올려보아요',
+                      titleStyle: GameCardTitleStyle.rising,
                       accentColor: const Color(0xFF1F6FEB),
                       onTap: () => openGame(context, const StackGameRoute()),
                     ),
                     const SizedBox(height: 16),
                     buildGameCard(
                       context: context,
-                      title: '수박게임',
-                      description: '같은 숫자를 합치며 점수를 올리는 수박게임 모드입니다.',
+                      title: '어디까지 커지는거에요?',
+                      description: '같은 돌을 합쳐서 제한된 높이까지 가장 많은 점수를 모아보세요',
+                      titleStyle: GameCardTitleStyle.growing,
                       accentColor: const Color(0xFFF28C28),
                       onTap: () => openGame(context, const SuikaGameRoute()),
                     ),
@@ -98,6 +104,7 @@ class GameSelectScreen extends StatelessWidget {
     required String description,
     required Color accentColor,
     required VoidCallback onTap,
+    GameCardTitleStyle titleStyle = GameCardTitleStyle.normal,
   }) {
     return InkWell(
       borderRadius: BorderRadius.circular(28),
@@ -140,14 +147,7 @@ class GameSelectScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFFF7F3E9),
-                      ),
-                    ),
+                    buildTitleWidget(title: title, titleStyle: titleStyle),
                     const SizedBox(height: 8),
                     Text(
                       description,
@@ -169,10 +169,116 @@ class GameSelectScreen extends StatelessWidget {
     );
   }
 
+  Widget buildTitleWidget({
+    required String title,
+    required GameCardTitleStyle titleStyle,
+  }) {
+    switch (titleStyle) {
+      case GameCardTitleStyle.rising:
+        return RisingTitleText(text: title);
+      case GameCardTitleStyle.growing:
+        return GrowingTitleText(text: title);
+      case GameCardTitleStyle.normal:
+        return Text(
+          title,
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFFF7F3E9),
+          ),
+        );
+    }
+  }
+
   /// 선택한 게임 화면으로 라우팅합니다.
   void openGame(BuildContext context, Widget screen) {
     Navigator.of(
       context,
     ).push(MaterialPageRoute<void>(builder: (BuildContext context) => screen));
+  }
+}
+
+class RisingTitleText extends StatelessWidget {
+  const RisingTitleText({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<String> glyphs = text.split('');
+    const TextStyle style = TextStyle(
+      fontSize: 22,
+      fontWeight: FontWeight.w800,
+      color: Color(0xFFF7F3E9),
+      letterSpacing: -0.6,
+      height: 1,
+    );
+    return SizedBox(
+      height: 36,
+      child: Align(
+        alignment: Alignment.bottomLeft,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.bottomLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: List<Widget>.generate(glyphs.length, (int index) {
+              final double lift = index * 1.15;
+              return Transform.translate(
+                offset: Offset(0, -lift),
+                child: Text(glyphs[index], style: style),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class GrowingTitleText extends StatelessWidget {
+  const GrowingTitleText({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<String> glyphs = text.split('');
+    const double minFontSize = 17;
+    const double maxFontSize = 28;
+    return SizedBox(
+      height: 38,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: List<Widget>.generate(glyphs.length, (int index) {
+              final double t = glyphs.length <= 1
+                  ? 1
+                  : index / (glyphs.length - 1);
+              final double fontSize = lerpDouble(minFontSize, maxFontSize, t)!;
+              return Padding(
+                padding: const EdgeInsets.only(right: 0.4),
+                child: Text(
+                  glyphs[index],
+                  style: TextStyle(
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFFF7F3E9),
+                    letterSpacing: -0.7,
+                    height: 1,
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
   }
 }
