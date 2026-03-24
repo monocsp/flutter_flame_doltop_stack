@@ -18,27 +18,97 @@ class _FlyingSeed {
     required this.vy,
     required this.size,
     required this.lifetime,
+    required this.windPhase,
+    required this.wobbleAmp,
   });
 
   double x;
   double y;
-  final double vx;
-  final double vy;
+  double vx;
+  double vy;
   final double size;
   final double lifetime;
+  final double windPhase; // random offset for wind wobble
+  final double wobbleAmp; // amplitude of lateral wobble
   double age = 0;
   double opacity = 1.0;
+  double rotation = 0;
+
+  // Trail: store recent positions for glow trail
+  final List<Offset> trail = [];
+  static const int maxTrailLength = 8;
 
   bool get isDead => age >= lifetime;
 
   void update(double dt) {
     age += dt;
+    final progress = age / lifetime;
+
+    // ★ Wind drift: gentle lateral oscillation
+    final windForce = sin(age * 2.5 + windPhase) * wobbleAmp;
+    vx += windForce * dt;
+
+    // ★ Gravity: very light downward pull after initial burst
+    if (progress > 0.3) {
+      vy += 12.0 * dt; // gentle gravity
+    }
+
+    // ★ Air resistance: gradual slowdown
+    final drag = 0.985;
+    vx *= drag;
+    vy *= drag;
+
+    // Store trail position before updating
+    trail.add(Offset(x, y));
+    if (trail.length > maxTrailLength) {
+      trail.removeAt(0);
+    }
+
     x += vx * dt;
     y += vy * dt;
-    final progress = age / lifetime;
-    opacity = progress < 0.6
+
+    // ★ Rotation follows velocity direction with wobble
+    rotation += (windForce * 0.08 + 0.5) * dt;
+
+    // Fade out
+    opacity = progress < 0.55
         ? 1.0
-        : (1.0 - (progress - 0.6) / 0.4).clamp(0.0, 1.0);
+        : (1.0 - (progress - 0.55) / 0.45).clamp(0.0, 1.0);
+  }
+}
+
+// ★ Lightweight particle for glow/sparkle effects (no image needed)
+class _GlowParticle {
+  _GlowParticle({
+    required this.x,
+    required this.y,
+    required this.vx,
+    required this.vy,
+    required this.radius,
+    required this.lifetime,
+    required this.color,
+  });
+
+  double x;
+  double y;
+  double vx;
+  double vy;
+  final double radius;
+  final double lifetime;
+  final Color color;
+  double age = 0;
+
+  bool get isDead => age >= lifetime;
+  double get opacity => (1.0 - age / lifetime).clamp(0.0, 1.0);
+
+  void update(double dt) {
+    age += dt;
+    x += vx * dt;
+    y += vy * dt;
+    // Slight upward drift for ethereal feel
+    vy -= 8.0 * dt;
+    vx *= 0.98;
+    vy *= 0.98;
   }
 }
 
@@ -70,6 +140,7 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
 
   // ── Seed animation ──
   final List<_FlyingSeed> _seeds = [];
+  final List<_GlowParticle> _particles = [];
   final Random _random = Random();
 
   // ── Ticker ──
@@ -97,6 +168,10 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
   bool _showNoDetectionHint = false;
   Timer? _noDetectionTimer;
   bool _everDetectedThisRound = false;
+
+  // ── Dandelion sway ──
+  double _dandelionSway = 0; // current sway angle in radians
+  double _swayTarget = 0;
 
   Timer? _countdownTimer;
   Timer? _seedSpawnTimer;
@@ -135,8 +210,35 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
     setState(() {
       for (final seed in _seeds) {
         seed.update(dt);
+        // ★ Spawn glow particles from seed trail
+        if (!seed.isDead && seed.age > 0.15 && _random.nextDouble() < 0.4) {
+          _particles.add(_GlowParticle(
+            x: seed.x,
+            y: seed.y,
+            vx: (_random.nextDouble() - 0.5) * 12,
+            vy: (_random.nextDouble() - 0.5) * 12,
+            radius: 1.5 + _random.nextDouble() * 2.5,
+            lifetime: 0.5 + _random.nextDouble() * 0.6,
+            color: const Color(0xFFE8E0D4),
+          ));
+        }
       }
       _seeds.removeWhere((s) => s.isDead);
+
+      for (final p in _particles) {
+        p.update(dt);
+      }
+      _particles.removeWhere((p) => p.isDead);
+
+      // ★ Dandelion sway: oscillate left-right during breath
+      if (_phase == _GamePhase.exhale && _breathActive) {
+        final elapsed = _exhaleElapsed;
+        final swingAmp = 0.06 + _breathLevel * 0.10;
+        _swayTarget = sin(elapsed * 3.5) * swingAmp;
+      } else {
+        _swayTarget = 0;
+      }
+      _dandelionSway += (_swayTarget - _dandelionSway) * 4.0 * dt;
 
       if (_phase == _GamePhase.exhale && !_endingExhale) {
         _exhaleElapsed += dt;
@@ -328,10 +430,8 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
         }
       }
 
-      final count = normalized < 0.3 ? 1 : normalized < 0.65 ? 2 : 3;
-      for (int i = 0; i < count; i++) {
-        if (mounted) _spawnSeed(normalized);
-      }
+      // ★ Always spawn 1 seed per tick (intensity affects speed/size, not count)
+      if (mounted) _spawnSeed(normalized);
     });
   }
 
@@ -340,6 +440,21 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
     final angle = -pi / 2 + (_random.nextDouble() - 0.5) * spread;
     final speed = 60.0 + intensity * 130.0 + _random.nextDouble() * 35.0;
 
+    // ★ Burst particles at spawn point
+    for (int j = 0; j < 3; j++) {
+      _particles.add(_GlowParticle(
+        x: (_random.nextDouble() - 0.5) * 10,
+        y: (_random.nextDouble() - 0.5) * 10,
+        vx: cos(angle) * speed * 0.3 + (_random.nextDouble() - 0.5) * 20,
+        vy: sin(angle) * speed * 0.3 + (_random.nextDouble() - 0.5) * 20,
+        radius: 2.0 + _random.nextDouble() * 3.0,
+        lifetime: 0.3 + _random.nextDouble() * 0.4,
+        color: _random.nextBool()
+            ? const Color(0xFFF7F3E9)
+            : const Color(0xFFE8E0D4),
+      ));
+    }
+
     setState(() {
       _seeds.add(_FlyingSeed(
         x: (_random.nextDouble() - 0.5) * 18,
@@ -347,7 +462,9 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
         vx: cos(angle) * speed,
         vy: sin(angle) * speed,
         size: 0.3 + intensity * 0.5 + _random.nextDouble() * 0.2,
-        lifetime: 1.8 + intensity * 1.2 + _random.nextDouble() * 1.0,
+        lifetime: 2.2 + intensity * 1.5 + _random.nextDouble() * 1.0,
+        windPhase: _random.nextDouble() * pi * 2,
+        wobbleAmp: 15.0 + _random.nextDouble() * 25.0,
       ));
       _lastRoundSeeds++;
       _totalSeeds++;
@@ -365,6 +482,8 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
       _phase = _GamePhase.roundBreak;
       _breathLevel = 0;
       _showNoDetectionHint = false;
+      _dandelionSway = 0;
+      _swayTarget = 0;
     });
 
     _round++;
@@ -593,36 +712,80 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
     final cx = size.width / 2;
     final cy = size.height * 0.58;
 
+    // ★ Breath-reactive background tint
+    final breathTint = _breathActive ? _breathLevel * 0.08 : 0.0;
+
     return Stack(
       children: [
-        // Flying seeds
+        // ★ Dynamic background glow when breathing
+        if (breathTint > 0)
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(0, 0.15),
+                  radius: 0.9,
+                  colors: [
+                    const Color(0xFF7ADAA5).withValues(alpha: breathTint),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        // ★ Glow particle layer (painted with Canvas)
+        Positioned.fill(
+          child: CustomPaint(
+            painter: _GlowParticlePainter(
+              particles: _particles,
+              center: Offset(cx, cy),
+            ),
+          ),
+        ),
+        // ★ Seed trail layer
+        Positioned.fill(
+          child: CustomPaint(
+            painter: _SeedTrailPainter(
+              seeds: _seeds,
+              center: Offset(cx, cy),
+            ),
+          ),
+        ),
+        // Flying seeds with rotation
         ..._seeds.map((seed) {
           return Positioned(
             left: cx + seed.x - 20,
             top: cy + seed.y - 25,
             child: Opacity(
               opacity: seed.opacity,
-              child: Transform.scale(
-                scale: seed.size,
-                child: SvgPicture.asset(
-                  'assets/dandelion_seed.svg',
-                  package: 'flutter_flame_breath_journey_game',
-                  width: 40,
-                  height: 50,
+              child: Transform.rotate(
+                angle: seed.rotation,
+                child: Transform.scale(
+                  scale: seed.size,
+                  child: SvgPicture.asset(
+                    'assets/dandelion_seed.svg',
+                    package: 'flutter_flame_breath_journey_game',
+                    width: 40,
+                    height: 50,
+                  ),
                 ),
               ),
             ),
           );
         }),
-        // Dandelion
+        // ★ Dandelion with breath sway
         Positioned(
           left: cx - 100,
           top: cy - 150,
-          child: SvgPicture.asset(
-            'assets/dandelion.svg',
-            package: 'flutter_flame_breath_journey_game',
-            width: 200,
-            height: 300,
+          child: Transform(
+            alignment: Alignment.bottomCenter,
+            transform: Matrix4.identity()..rotateZ(_dandelionSway),
+            child: SvgPicture.asset(
+              'assets/dandelion.svg',
+              package: 'flutter_flame_breath_journey_game',
+              width: 200,
+              height: 300,
+            ),
           ),
         ),
         // UI overlay
@@ -759,4 +922,67 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
       ),
     );
   }
+}
+
+// ─────────────────────────────────────────────
+// ★ Custom painters for particle effects
+// ─────────────────────────────────────────────
+
+class _GlowParticlePainter extends CustomPainter {
+  _GlowParticlePainter({required this.particles, required this.center});
+
+  final List<_GlowParticle> particles;
+  final Offset center;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final p in particles) {
+      final paint = Paint()
+        ..color = p.color.withValues(alpha: p.opacity * 0.7)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+      canvas.drawCircle(
+        Offset(center.dx + p.x, center.dy + p.y),
+        p.radius * p.opacity,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GlowParticlePainter oldDelegate) => true;
+}
+
+class _SeedTrailPainter extends CustomPainter {
+  _SeedTrailPainter({required this.seeds, required this.center});
+
+  final List<_FlyingSeed> seeds;
+  final Offset center;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final seed in seeds) {
+      if (seed.trail.length < 2) continue;
+      final trailPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round;
+
+      for (int i = 1; i < seed.trail.length; i++) {
+        final t = i / seed.trail.length;
+        trailPaint
+          ..color = const Color(0xFFF7F3E9)
+              .withValues(alpha: t * seed.opacity * 0.25)
+          ..strokeWidth = t * 2.5
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
+        canvas.drawLine(
+          Offset(center.dx + seed.trail[i - 1].dx,
+              center.dy + seed.trail[i - 1].dy),
+          Offset(center.dx + seed.trail[i].dx, center.dy + seed.trail[i].dy),
+          trailPaint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SeedTrailPainter oldDelegate) => true;
 }

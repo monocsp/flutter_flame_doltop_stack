@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <radialGradient id="dustGradient" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+      <stop offset="0%" stop-color="#7ADAA5" stop-opacity="1" />
+      <stop offset="100%" stop-color="#7ADAA5" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <g opacity="0.7">
+    <circle cx="10" cy="12" r="4" fill="url(#dustGradient)" />
+    <circle cx="22" cy="18" r="3" fill="url(#dustGradient)" />
+    <circle cx="15" cy="25" r="3.5" fill="url(#dustGradient)" />
+  </g>
+</svg>

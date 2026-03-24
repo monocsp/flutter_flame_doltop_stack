@@ -1,9 +1,41 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'intro_screen.dart';
+
+// ★ A falling seed with physics-based landing
+class _FallingSeed {
+  _FallingSeed({
+    required this.x,
+    required this.y,
+    required this.size,
+    required this.fallSpeed,
+    required this.drift,
+    required this.rotationSpeed,
+  });
+
+  double x;
+  double y;
+  final double size;
+  final double fallSpeed;
+  final double drift;
+  final double rotationSpeed;
+  double rotation = 0;
+  bool landed = false;
+  double landedY = double.infinity;
+  double opacity = 0.0;
+  // ★ Surfaces this seed has already decided to pass through
+  final Set<int> passedSurfaces = {};
+}
+
+class _TextMeasurement {
+  _TextMeasurement({required this.texts, this.extraPadding = 0});
+  final List<(String, TextStyle)> texts;
+  final double extraPadding;
+}
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key, required this.totalSeeds});
@@ -16,14 +48,31 @@ class ResultScreen extends StatefulWidget {
 
 class _ResultScreenState extends State<ResultScreen>
     with TickerProviderStateMixin {
-  static const int _visualSeedCount = 18;
   final Random _random = Random();
 
-  late List<AnimationController> _seedControllers;
-  late List<double> _seedX;
-  late List<double> _seedDrift;
-  late List<double> _seedSizes;
+  // ── Falling seeds ──
+  final List<_FallingSeed> _seeds = [];
+  int _seedsSpawned = 0;
+  double _spawnAccumulator = 0;
 
+  // ── Collision surfaces (text bounding boxes + floor) ──
+  final List<Rect> _surfaces = [];
+  // Track stacked height on each surface for pile-up effect
+  final Map<int, double> _surfaceStackHeight = {};
+
+  // ── Keys for measuring text positions ──
+  final GlobalKey _headerKey = GlobalKey();
+  final GlobalKey _text1Key = GlobalKey();
+  final GlobalKey _text2Key = GlobalKey();
+  final GlobalKey _text3Key = GlobalKey();
+  final GlobalKey _buttonKey = GlobalKey();
+
+  // ── Ticker ──
+  late Ticker _ticker;
+  Duration _lastElapsed = Duration.zero;
+  bool _surfacesMeasured = false;
+
+  // ── Text animations (keep existing) ──
   late AnimationController _countController;
   late Animation<int> _countAnimation;
 
@@ -39,10 +88,11 @@ class _ResultScreenState extends State<ResultScreen>
   @override
   void initState() {
     super.initState();
-    _setupSeedAnimations();
     _setupHeaderAnimation();
     _setupCountAnimation();
     _setupTextAnimations();
+
+    _ticker = createTicker(_onTick)..start();
 
     _headerController.forward();
 
@@ -53,25 +103,10 @@ class _ResultScreenState extends State<ResultScreen>
     Future.delayed(const Duration(milliseconds: 1800), () {
       if (mounted) _textController.forward();
     });
-  }
 
-  void _setupSeedAnimations() {
-    _seedX = List.generate(_visualSeedCount, (_) => _random.nextDouble());
-    _seedDrift =
-        List.generate(_visualSeedCount, (_) => (_random.nextDouble() - 0.5) * 0.08);
-    _seedSizes =
-        List.generate(_visualSeedCount, (_) => 0.35 + _random.nextDouble() * 0.55);
-
-    _seedControllers = List.generate(_visualSeedCount, (i) {
-      final duration =
-          Duration(milliseconds: 3500 + _random.nextInt(3500));
-      final ctrl = AnimationController(
-        vsync: this,
-        duration: duration,
-        value: _random.nextDouble(),
-      );
-      ctrl.repeat();
-      return ctrl;
+    // Measure text positions after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _measureSurfaces();
     });
   }
 
@@ -87,7 +122,8 @@ class _ResultScreenState extends State<ResultScreen>
     _headerSlide = Tween<Offset>(
       begin: const Offset(0, 0.15),
       end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _headerController, curve: Curves.easeOut));
+    ).animate(
+        CurvedAnimation(parent: _headerController, curve: Curves.easeOut));
   }
 
   void _setupCountAnimation() {
@@ -125,21 +161,191 @@ class _ResultScreenState extends State<ResultScreen>
     );
   }
 
+  // ★ Measure actual text width using TextPainter, not widget constraints
+  double _measureTextWidth(String text, TextStyle style) {
+    final maxW = MediaQuery.of(context).size.width - 72; // padding 36*2
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: maxW);
+    final w = tp.width;
+    tp.dispose();
+    return w;
+  }
+
+  void _measureSurfaces() {
+    _surfaces.clear();
+    _surfaceStackHeight.clear();
+
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    // ★ Text content + styles to measure actual rendered widths
+    final textMeasurements = <GlobalKey, _TextMeasurement>{
+      _headerKey: _TextMeasurement(
+        // Header's widest line: the count number row is dynamic,
+        // but "날아갔어요!" at 26px bold is a good approximation
+        texts: [
+          ('호흡하며 민들레 씨앗이', const TextStyle(fontSize: 17, fontWeight: FontWeight.w500)),
+          ('${widget.totalSeeds}개', const TextStyle(fontSize: 80, fontWeight: FontWeight.w900)),
+          ('날아갔어요!', const TextStyle(fontSize: 26, fontWeight: FontWeight.w700)),
+        ],
+      ),
+      _text1Key: _TextMeasurement(
+        texts: [
+          ('당신의 호흡으로\n민들레의 희망이 되었어요',
+            const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+        ],
+      ),
+      _text2Key: _TextMeasurement(
+        texts: [
+          ('작은 숨 하나가\n어딘가에서 꽃을 피울 거예요.\n\n오늘 당신이 내쉰 바람은\n씨앗이 되어 세상 어딘가에\n조용히 뿌리를 내릴 거예요.',
+            const TextStyle(fontSize: 15)),
+        ],
+      ),
+      _text3Key: _TextMeasurement(
+        texts: [
+          ('잘했어요.\n오늘 하루도 수고했어요. 🌱',
+            const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+        ],
+        extraPadding: 36, // container padding 18*2
+      ),
+      _buttonKey: _TextMeasurement(
+        texts: [
+          ('다시 호흡하기', const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        ],
+        extraPadding: 56, // horizontal padding 28*2
+      ),
+    };
+
+    for (final entry in textMeasurements.entries) {
+      final renderBox =
+          entry.key.currentContext?.findRenderObject() as RenderBox?;
+      if (renderBox == null || !renderBox.hasSize) continue;
+
+      final pos = renderBox.localToGlobal(Offset.zero);
+      final widgetHeight = renderBox.size.height;
+
+      // ★ Calculate actual text width (widest line)
+      final measurement = entry.value;
+      double maxTextWidth = 0;
+      for (final (text, style) in measurement.texts) {
+        final w = _measureTextWidth(text, style);
+        if (w > maxTextWidth) maxTextWidth = w;
+      }
+      maxTextWidth += measurement.extraPadding;
+
+      _surfaces.add(Rect.fromLTWH(pos.dx, pos.dy, maxTextWidth, widgetHeight));
+    }
+
+    // Floor surface (full width)
+    _surfaces.add(Rect.fromLTWH(0, screenHeight - 20, screenWidth, 20));
+
+    for (int i = 0; i < _surfaces.length; i++) {
+      _surfaceStackHeight[i] = 0;
+    }
+
+    _surfacesMeasured = true;
+  }
+
   @override
   void dispose() {
-    for (final ctrl in _seedControllers) {
-      ctrl.dispose();
-    }
+    _ticker.dispose();
     _countController.dispose();
     _textController.dispose();
     _headerController.dispose();
     super.dispose();
   }
 
+  void _onTick(Duration elapsed) {
+    if (_lastElapsed == Duration.zero) {
+      _lastElapsed = elapsed;
+      return;
+    }
+    final dt = (elapsed - _lastElapsed).inMicroseconds / 1000000.0;
+    _lastElapsed = elapsed;
+    if (dt <= 0 || dt > 0.1 || !mounted) return;
+
+    setState(() {
+      // ★ Spawn seeds gradually over time
+      if (_seedsSpawned < widget.totalSeeds) {
+        // Spawn rate: spread all seeds over ~8 seconds, with randomness
+        final seedsPerSecond = max(1.0, widget.totalSeeds / 8.0);
+        _spawnAccumulator += seedsPerSecond * dt;
+        while (_spawnAccumulator >= 1.0 && _seedsSpawned < widget.totalSeeds) {
+          _spawnAccumulator -= 1.0;
+          _spawnSeed();
+        }
+      }
+
+      // ★ Update all seeds
+      for (final seed in _seeds) {
+        if (seed.landed) continue;
+
+        // Fade in
+        seed.opacity = (seed.opacity + dt * 3.0).clamp(0.0, 0.7);
+
+        // Fall
+        seed.y += seed.fallSpeed * dt;
+        seed.x += seed.drift * dt;
+        seed.rotation += seed.rotationSpeed * dt;
+
+        // ★ Check collision with surfaces
+        if (_surfacesMeasured) {
+          _checkLanding(seed);
+        }
+      }
+    });
+  }
+
+  void _spawnSeed() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    _seeds.add(_FallingSeed(
+      x: _random.nextDouble() * screenWidth,
+      y: -30 - _random.nextDouble() * 60,
+      size: 0.3 + _random.nextDouble() * 0.5,
+      fallSpeed: 35.0 + _random.nextDouble() * 45.0,
+      drift: (_random.nextDouble() - 0.5) * 15.0,
+      rotationSpeed: (_random.nextDouble() - 0.5) * 1.5,
+    ));
+    _seedsSpawned++;
+  }
+
+  void _checkLanding(_FallingSeed seed) {
+    final seedBottom = seed.y + 25 * seed.size;
+    final seedCenterX = seed.x;
+    final isFloor = _surfaces.length - 1; // last surface = floor
+
+    for (int i = 0; i < _surfaces.length; i++) {
+      // ★ Skip surfaces this seed already decided to pass through
+      if (seed.passedSurfaces.contains(i)) continue;
+
+      final surface = _surfaces[i];
+      final stackH = _surfaceStackHeight[i] ?? 0;
+
+      if (seedCenterX >= surface.left - 3 &&
+          seedCenterX <= surface.right + 3) {
+        final landingY = surface.top - stackH;
+        if (seedBottom >= landingY) {
+          // ★ Floor always catches. Text surfaces: ~30% chance to land.
+          if (i != isFloor && _random.nextDouble() > 0.30) {
+            seed.passedSurfaces.add(i); // remember to skip next time
+            continue;
+          }
+          seed.landed = true;
+          final jitterX = (_random.nextDouble() - 0.5) * 6;
+          seed.x += jitterX;
+          seed.y = landingY - 25 * seed.size;
+          seed.opacity = 0.65;
+          _surfaceStackHeight[i] = stackH + 3 * seed.size;
+          return;
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-
     return Scaffold(
       backgroundColor: const Color(0xFF0D1F2D),
       body: Stack(
@@ -160,7 +366,7 @@ class _ResultScreenState extends State<ResultScreen>
             child: SizedBox.expand(),
           ),
 
-          // 민들레 본체 (하단 우측, 씨앗이 다 날아간 모습)
+          // 민들레 본체 (하단 우측)
           Positioned(
             right: -20,
             bottom: -60,
@@ -175,35 +381,26 @@ class _ResultScreenState extends State<ResultScreen>
             ),
           ),
 
-          // Falling seeds (background layer)
-          ...List.generate(_visualSeedCount, (i) {
-            return AnimatedBuilder(
-              animation: _seedControllers[i],
-              builder: (context, _) {
-                final progress = _seedControllers[i].value;
-                final xPos =
-                    (_seedX[i] + _seedDrift[i] * progress).clamp(0.0, 1.0);
-                final fadeOpacity = progress > 0.85
-                    ? (1.0 - (progress - 0.85) / 0.15).clamp(0.0, 1.0)
-                    : 1.0;
-
-                return Positioned(
-                  left: (xPos * size.width - 20).clamp(0.0, size.width - 40),
-                  top: progress * (size.height + 50) - 50,
-                  child: Opacity(
-                    opacity: fadeOpacity * 0.6,
-                    child: Transform.scale(
-                      scale: _seedSizes[i],
-                      child: SvgPicture.asset(
-                        'assets/dandelion_seed.svg',
-                        package: 'flutter_flame_breath_journey_game',
-                        width: 40,
-                        height: 50,
-                      ),
+          // ★ Falling seeds layer (behind content)
+          ..._seeds.map((seed) {
+            return Positioned(
+              left: seed.x - 20,
+              top: seed.y,
+              child: Opacity(
+                opacity: seed.opacity,
+                child: Transform.rotate(
+                  angle: seed.rotation,
+                  child: Transform.scale(
+                    scale: seed.size,
+                    child: SvgPicture.asset(
+                      'assets/dandelion_seed.svg',
+                      package: 'flutter_flame_breath_journey_game',
+                      width: 40,
+                      height: 50,
                     ),
                   ),
-                );
-              },
+                ),
+              ),
             );
           }),
 
@@ -239,6 +436,7 @@ class _ResultScreenState extends State<ResultScreen>
                     child: SlideTransition(
                       position: _headerSlide,
                       child: Column(
+                        key: _headerKey,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
@@ -255,7 +453,8 @@ class _ResultScreenState extends State<ResultScreen>
                             animation: _countAnimation,
                             builder: (context, _) {
                               return Row(
-                                crossAxisAlignment: CrossAxisAlignment.baseline,
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.baseline,
                                 textBaseline: TextBaseline.alphabetic,
                                 children: [
                                   Text(
@@ -298,9 +497,10 @@ class _ResultScreenState extends State<ResultScreen>
                   // Emotional messages
                   FadeTransition(
                     opacity: _text1Fade,
-                    child: const Text(
+                    child: Text(
+                      key: _text1Key,
                       '당신의 호흡으로\n민들레의 희망이 되었어요',
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: Color(0xFFF7F3E9),
                         fontSize: 22,
                         fontWeight: FontWeight.w600,
@@ -313,10 +513,11 @@ class _ResultScreenState extends State<ResultScreen>
 
                   FadeTransition(
                     opacity: _text2Fade,
-                    child: const Text(
+                    child: Text(
+                      key: _text2Key,
                       '작은 숨 하나가\n어딘가에서 꽃을 피울 거예요.\n\n'
-                      '오늘 당신이 내쉰 바람은\n씨앗이 되어 세상 어딘가에\n조용히 뿌리를 내릴 거예요.',
-                      style: TextStyle(
+                      '오늘 당신이 내쉬 바람은\n씨앗이 되어 세상 어딘가에\n조용히 뿌리를 내릴 거예요.',
+                      style: const TextStyle(
                         color: Color(0xFF8BA89A),
                         fontSize: 15,
                         height: 1.75,
@@ -329,12 +530,15 @@ class _ResultScreenState extends State<ResultScreen>
                   FadeTransition(
                     opacity: _text3Fade,
                     child: Container(
+                      key: _text3Key,
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF7ADAA5).withValues(alpha: 0.07),
+                        color:
+                            const Color(0xFF7ADAA5).withValues(alpha: 0.07),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: const Color(0xFF7ADAA5).withValues(alpha: 0.18),
+                          color: const Color(0xFF7ADAA5)
+                              .withValues(alpha: 0.18),
                         ),
                       ),
                       child: const Text(
@@ -364,6 +568,7 @@ class _ResultScreenState extends State<ResultScreen>
                         );
                       },
                       child: Container(
+                        key: _buttonKey,
                         padding: const EdgeInsets.symmetric(
                             horizontal: 28, vertical: 16),
                         decoration: BoxDecoration(
