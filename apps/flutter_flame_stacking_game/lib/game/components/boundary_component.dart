@@ -6,10 +6,17 @@ import 'package:flutter/material.dart';
 /// 하나의 정적 Forge2D 바디에 3개 fixture를 붙여,
 /// 스폰된 돌이 플레이 영역 밖으로 나가지 않게 합니다.
 class BoundaryComponent extends BodyComponent {
-  BoundaryComponent({required this.worldSize, this.includeFloor = true});
+  BoundaryComponent({
+    required this.worldSize,
+    this.includeFloor = true,
+    this.wallFriction = 0.9,
+  });
 
   final Vector2 worldSize;
   final bool includeFloor;
+
+  /// 벽 마찰력. 높을수록 돌이 벽에 기대기 쉬움 (난이도별 차등 적용).
+  final double wallFriction;
 
   /// 좌/우 벽 fixture 참조. 돌의 접촉 판별에서 벽/바닥을 구분하는 데 사용합니다.
   final Set<Fixture> wallFixtures = {};
@@ -56,12 +63,12 @@ class BoundaryComponent extends BodyComponent {
 
     body.createFixture(
       FixtureDef(leftWall)
-        ..friction = 0.9
+        ..friction = wallFriction
         ..restitution = 0.0,
     );
     body.createFixture(
       FixtureDef(rightWall)
-        ..friction = 0.9
+        ..friction = wallFriction
         ..restitution = 0.0,
     );
 

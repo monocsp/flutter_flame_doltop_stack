@@ -72,6 +72,18 @@ enum DifficultyLevel {
         return null;
     }
   }
+
+  /// 난이도별 벽 마찰력. 쉬움에서는 벽 기대기 허용, 어려움에서는 미끄러짐.
+  double get wallFriction {
+    switch (this) {
+      case easy:
+        return 0.9;
+      case normal:
+        return 0.25;
+      case hard:
+        return 0.05;
+    }
+  }
 }
 
 /// 온보딩 진행 상태를 정의합니다.
@@ -286,11 +298,12 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
           .map((stone) => stone.body),
       tuning: const DragTuning(
         pickRadius: 3.2,
-        maxForcePerMass: 1500,
-        frequencyHz: 5.0,
-        dampingRatio: 0.9,
+        maxForcePerMass: 2400,
+        frequencyHz: 10.0,
+        dampingRatio: 0.95,
         velocityGain: 12.0,
-        angularDampingGain: 0.4,
+        angularDampingGain: 0.25,
+        maxHorizontalVelocity: 20.0,
         compressionSuppressionPerStone: 0.45,
         maxCompressionSuppression: 0.10,
       ),
@@ -1257,6 +1270,7 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
         BoundaryComponent(
           worldSize: _worldSize!,
           includeFloor: !curvedFloorAdded,
+          wallFriction: difficulty.wallFriction,
         ),
       );
       _markHeightDisturbance();

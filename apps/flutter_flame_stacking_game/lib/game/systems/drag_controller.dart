@@ -16,6 +16,7 @@ class DragTuning {
     this.downwardVelocityMultiplier = 0.35,
     this.maxUpwardVelocity = 60.0,
     this.maxDownwardVelocity = 7.0,
+    this.maxHorizontalVelocity = 25.0,
     this.compressionSuppressionPerStone = 0.55,
     this.maxCompressionSuppression = 0.15,
   });
@@ -30,6 +31,7 @@ class DragTuning {
   final double downwardVelocityMultiplier;
   final double maxUpwardVelocity;
   final double maxDownwardVelocity;
+  final double maxHorizontalVelocity;
   final double compressionSuppressionPerStone;
   final double maxCompressionSuppression;
 }
@@ -53,6 +55,12 @@ class DragController {
   Body? _groundBody;
   Body? _draggedBody;
   Vector2? _dragTarget;
+
+  // ── 플릭 회전 감지 ──
+  double _prevHorizontalVelocity = 0.0;
+  static const double _flickThreshold = 3.0; // 방향 전환 감지 최소 속도차
+  static const double _flickRotationGain = 0.12; // 플릭 세기 → 회전 변환 계수
+  static const double _maxFlickAngularVelocity = 6.0; // 최대 회전 속도
 
   /// 현재 돌을 드래그 중인지 여부를 반환합니다.
   bool get isDragging => _draggedBody != null;
@@ -101,6 +109,7 @@ class DragController {
     world.createJoint(_mouseJoint!);
     _draggedBody = selectedBody;
     _dragTarget = worldPoint;
+    _prevHorizontalVelocity = 0.0;
     selectedBody.linearVelocity = Vector2.zero();
     selectedBody.angularVelocity = 0.0;
     selectedBody.setAwake(true);
@@ -157,8 +166,26 @@ class DragController {
       vy = vy.clamp(0.0, tuning.maxDownwardVelocity);
     }
 
-    body.linearVelocity = Vector2(rawVelocity.x, vy);
-    body.angularVelocity *= tuning.angularDampingGain;
+    final vx = rawVelocity.x.clamp(
+      -tuning.maxHorizontalVelocity,
+      tuning.maxHorizontalVelocity,
+    );
+    body.linearVelocity = Vector2(vx, vy);
+
+    // ── 플릭 회전: 좌우 방향 전환 시 회전력 부여 ──
+    final currentHVel = rawVelocity.x;
+    final velocityDelta = currentHVel - _prevHorizontalVelocity;
+    // 방향이 바뀌었고 속도 차이가 임계값 이상이면 플릭으로 판정
+    if (_prevHorizontalVelocity.sign != currentHVel.sign &&
+        _prevHorizontalVelocity.sign != 0 &&
+        velocityDelta.abs() > _flickThreshold) {
+      final flickTorque = (velocityDelta * _flickRotationGain)
+          .clamp(-_maxFlickAngularVelocity, _maxFlickAngularVelocity);
+      body.angularVelocity += flickTorque;
+    } else {
+      body.angularVelocity *= tuning.angularDampingGain;
+    }
+    _prevHorizontalVelocity = currentHVel;
     body.setAwake(true);
   }
 
