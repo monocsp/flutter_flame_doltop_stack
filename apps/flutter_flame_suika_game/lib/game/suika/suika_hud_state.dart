@@ -16,8 +16,12 @@ class SuikaHudState {
       comboRemainingSeconds = ValueNotifier<double>(0),
       comboEarnedScore = ValueNotifier<int>(0),
       comboActiveDurationSeconds = ValueNotifier<double>(0),
+      clearBonusScore = ValueNotifier<int>(0),
+      isClearBonusResolving = ValueNotifier<bool>(false),
+      comboTimeAddedToken = ValueNotifier<int>(0),
       isComboActive = ValueNotifier<bool>(false),
       comboPulseToken = ValueNotifier<int>(0),
+      scorePulseToken = ValueNotifier<int>(0),
       isPaused = ValueNotifier<bool>(false),
       isGameOver = ValueNotifier<bool>(false);
 
@@ -45,11 +49,23 @@ class SuikaHudState {
   /// 세션 동안 콤보가 활성화된 누적 시간입니다.
   final ValueNotifier<double> comboActiveDurationSeconds;
 
+  /// 게임오버 정산 중 누적되는 클리어 보너스 점수입니다.
+  final ValueNotifier<int> clearBonusScore;
+
+  /// 게임오버 후 클리어 보너스 정산 진행 여부입니다.
+  final ValueNotifier<bool> isClearBonusResolving;
+
+  /// 콤보 시간 +1초 피드백을 위한 트리거 토큰입니다.
+  final ValueNotifier<int> comboTimeAddedToken;
+
   /// 현재 콤보 활성 여부입니다.
   final ValueNotifier<bool> isComboActive;
 
   /// 중앙 Combo 연출을 재생하기 위한 트리거 토큰입니다.
   final ValueNotifier<int> comboPulseToken;
+
+  /// 최종 점수 합산 강조를 위한 트리거 토큰입니다.
+  final ValueNotifier<int> scorePulseToken;
 
   /// 일시정지 상태를 노출합니다.
   final ValueNotifier<bool> isPaused;
@@ -61,9 +77,11 @@ class SuikaHudState {
   void resetForNewGame() {
     _setValue(score, 0);
     _setValue(comboPendingBonus, 0);
-    _setValue(comboRemainingSeconds, 0);
+    _setValue(comboRemainingSeconds, 0.0);
     _setValue(comboEarnedScore, 0);
-    _setValue(comboActiveDurationSeconds, 0);
+    _setValue(comboActiveDurationSeconds, 0.0);
+    _setValue(clearBonusScore, 0);
+    _setValue(isClearBonusResolving, false);
     _setValue(isComboActive, false);
     _setValue(isPaused, false);
     _setValue(isGameOver, false);
@@ -111,9 +129,25 @@ class SuikaHudState {
     _setValue(comboActiveDurationSeconds, activeDurationSeconds);
   }
 
+  /// 게임오버 후 클리어 보너스 상태를 HUD에 반영합니다.
+  void setClearBonusState({required int score, required bool resolving}) {
+    _setValue(clearBonusScore, score);
+    _setValue(isClearBonusResolving, resolving);
+  }
+
   /// 콤보 시작 문구를 한 번 재생합니다.
   void triggerComboPulse() {
     _setValue(comboPulseToken, comboPulseToken.value + 1);
+  }
+
+  /// 최종 점수 반영 순간을 강조합니다.
+  void triggerScorePulse() {
+    _setValue(scorePulseToken, scorePulseToken.value + 1);
+  }
+
+  /// 콤보 시간이 늘어났음을 HUD에 알립니다.
+  void triggerComboTimeAdded() {
+    _setValue(comboTimeAddedToken, comboTimeAddedToken.value + 1);
   }
 
   /// 일시정지 상태를 HUD에 반영합니다.
@@ -155,8 +189,12 @@ class SuikaHudState {
     comboRemainingSeconds.dispose();
     comboEarnedScore.dispose();
     comboActiveDurationSeconds.dispose();
+    clearBonusScore.dispose();
+    isClearBonusResolving.dispose();
+    comboTimeAddedToken.dispose();
     isComboActive.dispose();
     comboPulseToken.dispose();
+    scorePulseToken.dispose();
     isPaused.dispose();
     isGameOver.dispose();
   }

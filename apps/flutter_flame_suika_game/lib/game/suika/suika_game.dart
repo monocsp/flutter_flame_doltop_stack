@@ -126,6 +126,15 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   /// 게임오버 플래그입니다.
   bool isGameOver = false;
 
+  /// 게임오버 후 남은 돌 정산이 진행 중인지 여부입니다.
+  bool isClearBonusResolving = false;
+
+  /// 게임오버 후 클리어 보너스로 누적된 점수입니다.
+  int clearBonusScore = 0;
+
+  bool skipClearBonusRequested = false;
+  int lastGameOverTapAtMs = 0;
+
   /// 다음 스톤 큐입니다.
   late StoneSpec currentStone;
 
@@ -240,6 +249,10 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
   @override
   void update(double dt) {
     if (paused) {
+      super.update(dt);
+      return;
+    }
+    if (isGameOver) {
       super.update(dt);
       return;
     }
@@ -529,9 +542,14 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
     }
     flushPendingComboBonus();
     isGameOver = true;
+    isClearBonusResolving = true;
+    clearBonusScore = 0;
+    skipClearBonusRequested = false;
+    lastGameOverTapAtMs = 0;
+    hudState.setClearBonusState(score: 0, resolving: true);
     hudState.setGameOver(true);
     hudState.setPaused(false);
-    pauseEngine();
+    unawaited(runClearBonusSequence());
   }
 
   /// 점수 갱신 로직을 HUD와 통합합니다.
@@ -563,6 +581,7 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
       if (extendsComboTime) {
         comboHighestMergeValue = max(comboHighestMergeValue, mergeValue);
         comboRemainingSeconds = min(comboMaxSeconds, comboRemainingSeconds + 1);
+        hudState.triggerComboTimeAdded();
       }
       pendingComboBonus += calculateComboBonus(mergeValue);
       syncComboHud();
@@ -641,6 +660,156 @@ class SuikaGame extends Forge2DGame with HasCollisionDetection, TapCallbacks {
       setScore(score + bonus);
     }
     syncComboHud();
+  }
+
+  /// 게임오버 정산 중 두 번 탭하면 남은 보너스를 즉시 정산합니다.
+  bool registerGameOverTap() {
+    if (!isGameOver || !isClearBonusResolving) {
+      return false;
+    }
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    if (now - lastGameOverTapAtMs <= 260) {
+      skipClearBonusRequested = true;
+      return true;
+    }
+    lastGameOverTapAtMs = now;
+    return true;
+  }
+
+  /// 남은 돌을 단계별로 제거하며 게임오버 클리어 보너스를 계산합니다.
+  Future<void> runClearBonusSequence() async {
+    for (int stage = 0; stage < stoneCatalog.length; stage += 1) {
+      while (true) {
+        if (skipClearBonusRequested) {
+          applyRemainingClearBonusImmediately();
+          await bankClearBonusIntoScore();
+          return;
+        }
+        final SuikaStoneBody? stone = findTopmostStoneForStage(stage);
+        if (stone == null) {
+          break;
+        }
+        popStoneForClearBonus(stone);
+        await Future<void>.delayed(Duration(milliseconds: 88 + (stage * 10)));
+      }
+    }
+    await bankClearBonusIntoScore();
+  }
+
+  /// 현재 보드에서 특정 단계의 가장 위쪽 돌을 찾습니다.
+  SuikaStoneBody? findTopmostStoneForStage(int stage) {
+    final List<SuikaStoneBody> stones = world.children
+        .query<SuikaStoneBody>()
+        .where(
+          (SuikaStoneBody stone) =>
+              stone.isMounted && stone.spec.stage == stage,
+        )
+        .toList(growable: false);
+    if (stones.isEmpty) {
+      return null;
+    }
+    stones.sort(
+      (SuikaStoneBody first, SuikaStoneBody second) =>
+          first.body.position.y.compareTo(second.body.position.y),
+    );
+    return stones.first;
+  }
+
+  /// 단일 돌을 제거하고 해당 단계의 클리어 보너스를 누적합니다.
+  void popStoneForClearBonus(SuikaStoneBody stone) {
+    if (!stone.isMounted) {
+      return;
+    }
+    stone.removeFromParent();
+    clearBonusScore += clearBonusValueForStage(stone.spec.stage + 1);
+    hudState.setClearBonusState(
+      score: clearBonusScore,
+      resolving: isClearBonusResolving,
+    );
+    unawaited(playClearBonusHaptic(stone.spec.stage + 1));
+  }
+
+  /// 남아 있는 모든 돌을 즉시 제거하고 클리어 보너스를 합산합니다.
+  void applyRemainingClearBonusImmediately() {
+    final List<SuikaStoneBody> stones = world.children
+        .query<SuikaStoneBody>()
+        .where((SuikaStoneBody stone) => stone.isMounted)
+        .toList(growable: false);
+    for (final SuikaStoneBody stone in stones) {
+      stone.removeFromParent();
+      clearBonusScore += clearBonusValueForStage(stone.spec.stage + 1);
+    }
+    hudState.setClearBonusState(score: clearBonusScore, resolving: true);
+  }
+
+  /// 게임오버 후 누적된 클리어 보너스를 최종 점수에 합산합니다.
+  Future<void> bankClearBonusIntoScore() async {
+    isClearBonusResolving = false;
+    hudState.setClearBonusState(score: clearBonusScore, resolving: false);
+    if (clearBonusScore <= 0) {
+      hudState.triggerScorePulse();
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    setScore(score + clearBonusScore);
+    hudState.triggerScorePulse();
+  }
+
+  /// 단계별 클리어 보너스 점수 규칙입니다.
+  int clearBonusValueForStage(int value) {
+    if (value <= 4) {
+      return value * value;
+    }
+    if (value <= 7) {
+      return value * value * value;
+    }
+    return value * value * value * value;
+  }
+
+  Future<void> playClearBonusHaptic(int stageValue) async {
+    switch (stageValue) {
+      case 1:
+        await HapticFeedback.selectionClick();
+        return;
+      case 2:
+        await HapticFeedback.lightImpact();
+        return;
+      case 3:
+        await HapticFeedback.mediumImpact();
+        return;
+      case 4:
+        await HapticFeedback.heavyImpact();
+        return;
+      case 5:
+        await HapticFeedback.mediumImpact();
+        await Future<void>.delayed(const Duration(milliseconds: 18));
+        await HapticFeedback.heavyImpact();
+        return;
+      case 6:
+        await HapticFeedback.heavyImpact();
+        await Future<void>.delayed(const Duration(milliseconds: 24));
+        await HapticFeedback.lightImpact();
+        return;
+      case 7:
+        await HapticFeedback.heavyImpact();
+        await Future<void>.delayed(const Duration(milliseconds: 28));
+        await HapticFeedback.mediumImpact();
+        return;
+      case 8:
+        await HapticFeedback.heavyImpact();
+        await Future<void>.delayed(const Duration(milliseconds: 26));
+        await HapticFeedback.heavyImpact();
+        return;
+      case 9:
+        await HapticFeedback.heavyImpact();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await HapticFeedback.mediumImpact();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await HapticFeedback.heavyImpact();
+        return;
+      default:
+        await HapticFeedback.heavyImpact();
+    }
   }
 
   /// 드롭 풀에서 무작위 단계를 선택합니다.

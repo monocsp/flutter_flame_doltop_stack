@@ -564,6 +564,7 @@ class SuikaScreenState extends State<SuikaScreen> {
             0.0,
             1.0,
           ),
+          pulseListenable: hudState.comboTimeAddedToken,
         );
       },
     );
@@ -807,71 +808,92 @@ class SuikaScreenState extends State<SuikaScreen> {
 
   /// 게임오버일 때만 중앙 오버레이를 노출합니다.
   Widget buildGameOverOverlay() {
-    return Center(
-      child: ValueListenableBuilder<bool>(
-        valueListenable: hudState.isGameOver,
-        builder: (BuildContext context, bool isGameOver, Widget? child) {
-          return IgnorePointer(
-            ignoring: !isGameOver,
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 220),
-              opacity: isGameOver ? 1 : 0,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF101418).withValues(alpha: 0.86),
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(
-                    color: const Color(0xFFF7C59F).withValues(alpha: 0.22),
+    return ValueListenableBuilder<bool>(
+      valueListenable: hudState.isGameOver,
+      builder: (BuildContext context, bool isGameOver, Widget? child) {
+        return IgnorePointer(
+          ignoring: !isGameOver,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 220),
+            opacity: isGameOver ? 1 : 0,
+            child: Stack(
+              children: <Widget>[
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      currentGame?.registerGameOverTap();
+                    },
                   ),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 28,
-                    vertical: 24,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      const Text(
-                        'Game Over',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                        ),
+                Center(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF101418).withValues(alpha: 0.86),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: const Color(0xFFF7C59F).withValues(alpha: 0.22),
                       ),
-                      const SizedBox(height: 8),
-                      ValueListenableBuilder<int>(
-                        valueListenable: hudState.score,
-                        builder:
-                            (BuildContext context, int value, Widget? child) {
-                              return Column(
-                                children: <Widget>[
-                                  Text(
-                                    'Final Score $value',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      color: Color(0xFFD9CAB3),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 24,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const Text(
+                            'Game Over',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFF7F3E9),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          buildGameOverFinalScore(),
+                          const SizedBox(height: 14),
+                          buildGameOverStats(),
+                          ValueListenableBuilder<bool>(
+                            valueListenable: hudState.isClearBonusResolving,
+                            builder:
+                                (
+                                  BuildContext context,
+                                  bool resolving,
+                                  Widget? child,
+                                ) {
+                                  return AnimatedOpacity(
+                                    duration: const Duration(milliseconds: 180),
+                                    opacity: resolving ? 1 : 0,
+                                    child: const Padding(
+                                      padding: EdgeInsets.only(top: 12),
+                                      child: Text(
+                                        'Double-tap to skip clear bonus',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Color(0xFFD9CAB3),
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  buildGameOverStats(),
-                                ],
-                              );
-                            },
+                                  );
+                                },
+                          ),
+                          const SizedBox(height: 18),
+                          FilledButton(
+                            onPressed: restartGame,
+                            child: const Text('Play Again'),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 18),
-                      FilledButton(
-                        onPressed: restartGame,
-                        child: const Text('Play Again'),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -1018,23 +1040,44 @@ class SuikaScreenState extends State<SuikaScreen> {
 
   Widget buildGameOverStats() {
     return ValueListenableBuilder<int>(
-      valueListenable: hudState.comboEarnedScore,
-      builder: (BuildContext context, int comboScore, Widget? child) {
-        return ValueListenableBuilder<double>(
-          valueListenable: hudState.comboActiveDurationSeconds,
-          builder: (BuildContext context, double comboDuration, Widget? child) {
-            return Column(
-              children: <Widget>[
-                buildGameOverStatRow(
-                  label: 'Combo Score',
-                  value: comboScore.toString(),
-                ),
-                const SizedBox(height: 8),
-                buildGameOverStatRow(
-                  label: 'Combo Time',
-                  value: formatSeconds(comboDuration),
-                ),
-              ],
+      valueListenable: hudState.clearBonusScore,
+      builder: (BuildContext context, int clearBonus, Widget? child) {
+        return ValueListenableBuilder<int>(
+          valueListenable: hudState.comboEarnedScore,
+          builder: (BuildContext context, int comboScore, Widget? child) {
+            return ValueListenableBuilder<double>(
+              valueListenable: hudState.comboActiveDurationSeconds,
+              builder:
+                  (BuildContext context, double comboDuration, Widget? child) {
+                    return Column(
+                      children: <Widget>[
+                        buildGameOverStatRow(
+                          label: 'Clear Bonus',
+                          value: AnimatedStatValue(
+                            value: clearBonus,
+                            color: const Color(0xFFFFD7A1),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        buildGameOverStatRow(
+                          label: 'Combo Score',
+                          value: AnimatedStatValue(value: comboScore),
+                        ),
+                        const SizedBox(height: 8),
+                        buildGameOverStatRow(
+                          label: 'Combo Time',
+                          value: Text(
+                            formatSeconds(comboDuration),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFF7F3E9),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
             );
           },
         );
@@ -1042,7 +1085,32 @@ class SuikaScreenState extends State<SuikaScreen> {
     );
   }
 
-  Widget buildGameOverStatRow({required String label, required String value}) {
+  Widget buildGameOverFinalScore() {
+    return ValueListenableBuilder<int>(
+      valueListenable: hudState.score,
+      builder: (BuildContext context, int value, Widget? child) {
+        return Column(
+          children: <Widget>[
+            const Text(
+              'Final Score',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFFD9CAB3),
+              ),
+            ),
+            const SizedBox(height: 4),
+            PulsingScoreValue(
+              score: value,
+              pulseTokenListenable: hudState.scorePulseToken,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget buildGameOverStatRow({required String label, required Widget value}) {
     return SizedBox(
       width: 220,
       child: Row(
@@ -1057,14 +1125,7 @@ class SuikaScreenState extends State<SuikaScreen> {
               ),
             ),
           ),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFFF7F3E9),
-            ),
-          ),
+          value,
         ],
       ),
     );
@@ -1076,9 +1137,14 @@ class SuikaScreenState extends State<SuikaScreen> {
 }
 
 class AnimatedScoreValue extends StatefulWidget {
-  const AnimatedScoreValue({super.key, required this.score});
+  const AnimatedScoreValue({
+    super.key,
+    required this.score,
+    this.textColor = const Color(0xFFF7F3E9),
+  });
 
   final int score;
+  final Color textColor;
 
   @override
   State<AnimatedScoreValue> createState() => _AnimatedScoreValueState();
@@ -1107,25 +1173,29 @@ class _AnimatedScoreValueState extends State<AnimatedScoreValue> {
 
   @override
   Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: from.toDouble(), end: to.toDouble()),
-      duration: const Duration(milliseconds: 420),
+    return AnimatedDefaultTextStyle(
+      duration: const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
-      builder: (BuildContext context, double value, Widget? child) {
-        return Text(
-          value.round().toString(),
-          maxLines: 1,
-          overflow: TextOverflow.fade,
-          softWrap: false,
-          textAlign: TextAlign.left,
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFFF7F3E9),
-            fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
-          ),
-        );
-      },
+      style: TextStyle(
+        fontSize: 24,
+        fontWeight: FontWeight.w800,
+        color: widget.textColor,
+        fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+      ),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: from.toDouble(), end: to.toDouble()),
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutCubic,
+        builder: (BuildContext context, double value, Widget? child) {
+          return Text(
+            value.round().toString(),
+            maxLines: 1,
+            overflow: TextOverflow.fade,
+            softWrap: false,
+            textAlign: TextAlign.left,
+          );
+        },
+      ),
     );
   }
 }
@@ -1146,10 +1216,14 @@ class AnimatedPendingComboBonusValue extends StatefulWidget {
 }
 
 class _AnimatedPendingComboBonusValueState
-    extends State<AnimatedPendingComboBonusValue> {
+    extends State<AnimatedPendingComboBonusValue>
+    with SingleTickerProviderStateMixin {
   late int from;
   late int to;
   bool wasVisible = false;
+  late final AnimationController pulseController;
+  late final Animation<double> scaleAnimation;
+  late final Animation<Color?> colorAnimation;
 
   @override
   void initState() {
@@ -1157,6 +1231,33 @@ class _AnimatedPendingComboBonusValueState
     from = widget.amount;
     to = widget.amount;
     wasVisible = widget.amount > 0;
+    pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 170),
+    );
+    scaleAnimation = TweenSequence<double>(<TweenSequenceItem<double>>[
+      TweenSequenceItem<double>(
+        tween: Tween<double>(
+          begin: 1.0,
+          end: 1.08,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 42,
+      ),
+      TweenSequenceItem<double>(
+        tween: Tween<double>(
+          begin: 1.08,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 58,
+      ),
+    ]).animate(pulseController);
+    colorAnimation =
+        ColorTween(
+          begin: const Color(0xFFFF6B57),
+          end: const Color(0xFFFFC2A8),
+        ).animate(
+          CurvedAnimation(parent: pulseController, curve: Curves.easeOutCubic),
+        );
   }
 
   @override
@@ -1168,6 +1269,15 @@ class _AnimatedPendingComboBonusValueState
     from = to;
     to = widget.amount;
     wasVisible = oldWidget.amount > 0;
+    if (widget.amount > oldWidget.amount && widget.amount > 0) {
+      pulseController.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    pulseController.dispose();
+    super.dispose();
   }
 
   @override
@@ -1187,21 +1297,38 @@ class _AnimatedPendingComboBonusValueState
           alignment: Alignment.centerLeft,
           child: Padding(
             padding: EdgeInsets.only(left: widget.leftPadding),
-            child: TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: from.toDouble(), end: to.toDouble()),
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              builder: (BuildContext context, double value, Widget? child) {
-                return Text(
-                  '+${value.round()}',
-                  maxLines: 1,
-                  overflow: TextOverflow.clip,
-                  softWrap: false,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFFFF6B57),
-                    fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
+            child: AnimatedBuilder(
+              animation: pulseController,
+              builder: (BuildContext context, Widget? child) {
+                return Transform.scale(
+                  scale: scaleAnimation.value,
+                  alignment: Alignment.centerLeft,
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween<double>(
+                      begin: from.toDouble(),
+                      end: to.toDouble(),
+                    ),
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    builder:
+                        (BuildContext context, double value, Widget? child) {
+                          return Text(
+                            '+${value.round()}',
+                            maxLines: 1,
+                            overflow: TextOverflow.clip,
+                            softWrap: false,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color:
+                                  colorAnimation.value ??
+                                  const Color(0xFFFF6B57),
+                              fontFeatures: const <FontFeature>[
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          );
+                        },
                   ),
                 );
               },
@@ -1229,8 +1356,10 @@ class ScorePanelBody extends StatefulWidget {
 
 class _ScorePanelBodyState extends State<ScorePanelBody> {
   Timer? settlementTimer;
+  Timer? settleHighlightTimer;
   late int displayedScore;
   late int displayedPendingBonus;
+  bool isBankingScore = false;
 
   @override
   void initState() {
@@ -1259,9 +1388,11 @@ class _ScorePanelBodyState extends State<ScorePanelBody> {
 
     if (hadPendingBonus && widget.score > oldWidget.score) {
       settlementTimer?.cancel();
+      settleHighlightTimer?.cancel();
       setState(() {
         displayedScore = oldWidget.score;
         displayedPendingBonus = 0;
+        isBankingScore = true;
       });
       settlementTimer = Timer(const Duration(milliseconds: 150), () {
         if (!mounted) {
@@ -1271,14 +1402,24 @@ class _ScorePanelBodyState extends State<ScorePanelBody> {
           displayedScore = widget.score;
         });
       });
+      settleHighlightTimer = Timer(const Duration(milliseconds: 610), () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          isBankingScore = false;
+        });
+      });
       return;
     }
 
     settlementTimer?.cancel();
+    settleHighlightTimer?.cancel();
     if (displayedScore != widget.score || displayedPendingBonus != 0) {
       setState(() {
         displayedScore = widget.score;
         displayedPendingBonus = 0;
+        isBankingScore = false;
       });
     }
   }
@@ -1286,6 +1427,7 @@ class _ScorePanelBodyState extends State<ScorePanelBody> {
   @override
   void dispose() {
     settlementTimer?.cancel();
+    settleHighlightTimer?.cancel();
     super.dispose();
   }
 
@@ -1299,7 +1441,12 @@ class _ScorePanelBodyState extends State<ScorePanelBody> {
     }
     return Align(
       alignment: Alignment.centerLeft,
-      child: AnimatedScoreValue(score: displayedScore),
+      child: AnimatedScoreValue(
+        score: displayedScore,
+        textColor: isBankingScore
+            ? const Color(0xFFFF6B57)
+            : const Color(0xFFF7F3E9),
+      ),
     );
   }
 }
@@ -1339,22 +1486,241 @@ class ComboScorePanel extends StatelessWidget {
   }
 }
 
+class AnimatedStatValue extends StatefulWidget {
+  const AnimatedStatValue({
+    super.key,
+    required this.value,
+    this.color = const Color(0xFFF7F3E9),
+  });
+
+  final int value;
+  final Color color;
+
+  @override
+  State<AnimatedStatValue> createState() => _AnimatedStatValueState();
+}
+
+class _AnimatedStatValueState extends State<AnimatedStatValue> {
+  late int from;
+  late int to;
+
+  @override
+  void initState() {
+    super.initState();
+    from = widget.value;
+    to = widget.value;
+  }
+
+  @override
+  void didUpdateWidget(covariant AnimatedStatValue oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.value == to) {
+      return;
+    }
+    from = to;
+    to = widget.value;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: from.toDouble(), end: to.toDouble()),
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      builder: (BuildContext context, double value, Widget? child) {
+        return Text(
+          value.round().toString(),
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            color: widget.color,
+            fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class PulsingScoreValue extends StatefulWidget {
+  const PulsingScoreValue({
+    super.key,
+    required this.score,
+    required this.pulseTokenListenable,
+  });
+
+  final int score;
+  final ValueListenable<int> pulseTokenListenable;
+
+  @override
+  State<PulsingScoreValue> createState() => _PulsingScoreValueState();
+}
+
+class _PulsingScoreValueState extends State<PulsingScoreValue>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController controller;
+  late final Animation<double> scaleAnimation;
+  late final Animation<Color?> colorAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    );
+    scaleAnimation = TweenSequence<double>(<TweenSequenceItem<double>>[
+      TweenSequenceItem<double>(
+        tween: Tween<double>(
+          begin: 1.0,
+          end: 1.1,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 32,
+      ),
+      TweenSequenceItem<double>(
+        tween: Tween<double>(
+          begin: 1.1,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 68,
+      ),
+    ]).animate(controller);
+    colorAnimation = ColorTween(
+      begin: const Color(0xFFF7F3E9),
+      end: const Color(0xFFFF6B57),
+    ).animate(CurvedAnimation(parent: controller, curve: Curves.easeOutCubic));
+    widget.pulseTokenListenable.addListener(handlePulse);
+  }
+
+  @override
+  void didUpdateWidget(covariant PulsingScoreValue oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(
+      oldWidget.pulseTokenListenable,
+      widget.pulseTokenListenable,
+    )) {
+      return;
+    }
+    oldWidget.pulseTokenListenable.removeListener(handlePulse);
+    widget.pulseTokenListenable.addListener(handlePulse);
+  }
+
+  @override
+  void dispose() {
+    widget.pulseTokenListenable.removeListener(handlePulse);
+    controller.dispose();
+    super.dispose();
+  }
+
+  void handlePulse() {
+    controller.forward(from: 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (BuildContext context, Widget? child) {
+        return Transform.scale(
+          scale: scaleAnimation.value,
+          child: AnimatedScoreValue(
+            score: widget.score,
+            textColor: colorAnimation.value ?? const Color(0xFFF7F3E9),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class ComboProgressBar extends StatefulWidget {
-  const ComboProgressBar({super.key, required this.progress});
+  const ComboProgressBar({
+    super.key,
+    required this.progress,
+    required this.pulseListenable,
+  });
 
   final double progress;
+  final ValueListenable<int> pulseListenable;
 
   @override
   State<ComboProgressBar> createState() => _ComboProgressBarState();
 }
 
-class _ComboProgressBarState extends State<ComboProgressBar> {
+class _ComboProgressBarState extends State<ComboProgressBar>
+    with SingleTickerProviderStateMixin {
   late double previousProgress;
+  late final AnimationController pulseController;
+  late final Animation<double> capScaleAnimation;
+  late final Animation<double> capSlideAnimation;
+  late final Animation<double> flashAnimation;
+  late final Animation<double> labelLiftAnimation;
+  late final Animation<double> labelOpacityAnimation;
 
   @override
   void initState() {
     super.initState();
     previousProgress = widget.progress;
+    pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 430),
+    );
+    capScaleAnimation = TweenSequence<double>(<TweenSequenceItem<double>>[
+      TweenSequenceItem<double>(
+        tween: Tween<double>(
+          begin: 1.0,
+          end: 1.22,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 30,
+      ),
+      TweenSequenceItem<double>(
+        tween: Tween<double>(
+          begin: 1.22,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 70,
+      ),
+    ]).animate(pulseController);
+    capSlideAnimation = Tween<double>(begin: 0, end: 7).animate(
+      CurvedAnimation(parent: pulseController, curve: Curves.easeOutCubic),
+    );
+    flashAnimation = TweenSequence<double>(<TweenSequenceItem<double>>[
+      TweenSequenceItem<double>(
+        tween: Tween<double>(
+          begin: 0,
+          end: 0.18,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 18,
+      ),
+      TweenSequenceItem<double>(
+        tween: Tween<double>(
+          begin: 0.18,
+          end: 0,
+        ).chain(CurveTween(curve: Curves.easeInCubic)),
+        weight: 82,
+      ),
+    ]).animate(pulseController);
+    labelLiftAnimation = Tween<double>(begin: 0, end: -10).animate(
+      CurvedAnimation(parent: pulseController, curve: Curves.easeOutCubic),
+    );
+    labelOpacityAnimation = TweenSequence<double>(<TweenSequenceItem<double>>[
+      TweenSequenceItem<double>(
+        tween: Tween<double>(
+          begin: 0,
+          end: 1,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 24,
+      ),
+      TweenSequenceItem<double>(tween: ConstantTween<double>(1), weight: 24),
+      TweenSequenceItem<double>(
+        tween: Tween<double>(
+          begin: 1,
+          end: 0,
+        ).chain(CurveTween(curve: Curves.easeInCubic)),
+        weight: 52,
+      ),
+    ]).animate(pulseController);
+    widget.pulseListenable.addListener(handlePulse);
   }
 
   @override
@@ -1364,6 +1730,21 @@ class _ComboProgressBarState extends State<ComboProgressBar> {
       return;
     }
     previousProgress = oldWidget.progress;
+    if (!identical(oldWidget.pulseListenable, widget.pulseListenable)) {
+      oldWidget.pulseListenable.removeListener(handlePulse);
+      widget.pulseListenable.addListener(handlePulse);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.pulseListenable.removeListener(handlePulse);
+    pulseController.dispose();
+    super.dispose();
+  }
+
+  void handlePulse() {
+    pulseController.forward(from: 0);
   }
 
   @override
@@ -1374,51 +1755,147 @@ class _ComboProgressBarState extends State<ComboProgressBar> {
 
     return IgnorePointer(
       child: SizedBox(
-        height: 8,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xFF5A5C62).withValues(alpha: 0.34),
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: TweenAnimationBuilder<double>(
-            tween: Tween<double>(begin: previousProgress, end: widget.progress),
-            duration: duration,
-            curve: Curves.linear,
-            builder: (BuildContext context, double value, Widget? child) {
-              return Align(
-                alignment: Alignment.centerLeft,
-                child: FractionallySizedBox(
-                  widthFactor: value.clamp(0.0, 1.0),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          stops: <double>[0.0, 0.48, 1.0],
-                          colors: <Color>[
-                            Color(0xFF8A1720),
-                            Color(0xFFD83A44),
-                            Color(0xFFFF8D62),
-                          ],
-                        ),
-                        boxShadow: <BoxShadow>[
-                          BoxShadow(
+        height: 24,
+        child: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) {
+            return TweenAnimationBuilder<double>(
+              tween: Tween<double>(
+                begin: previousProgress,
+                end: widget.progress,
+              ),
+              duration: duration,
+              curve: Curves.linear,
+              builder: (BuildContext context, double value, Widget? child) {
+                final double clamped = value.clamp(0.0, 1.0);
+                final double filledWidth = constraints.maxWidth * clamped;
+
+                return Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.centerLeft,
+                  children: <Widget>[
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: SizedBox(
+                        height: 8,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
                             color: const Color(
-                              0xFFFF6C58,
-                            ).withValues(alpha: 0.18),
-                            blurRadius: 10,
+                              0xFF5A5C62,
+                            ).withValues(alpha: 0.34),
+                            borderRadius: BorderRadius.circular(999),
                           ),
-                        ],
+                        ),
                       ),
-                      child: const SizedBox.expand(),
                     ),
-                  ),
-                ),
-              );
-            },
-          ),
+                    Positioned(
+                      left: 0,
+                      bottom: 0,
+                      width: filledWidth,
+                      child: SizedBox(
+                        height: 8,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: Stack(
+                            children: <Widget>[
+                              DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    begin: Alignment.centerLeft,
+                                    end: Alignment.centerRight,
+                                    stops: <double>[0.0, 0.48, 1.0],
+                                    colors: <Color>[
+                                      Color(0xFF8A1720),
+                                      Color(0xFFD83A44),
+                                      Color(0xFFFF8D62),
+                                    ],
+                                  ),
+                                  boxShadow: <BoxShadow>[
+                                    BoxShadow(
+                                      color: const Color(
+                                        0xFFFF6C58,
+                                      ).withValues(alpha: 0.18),
+                                      blurRadius: 10,
+                                    ),
+                                  ],
+                                ),
+                                child: const SizedBox.expand(),
+                              ),
+                              Positioned.fill(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(
+                                      alpha: flashAnimation.value,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (filledWidth > 0)
+                      Positioned(
+                        left: (filledWidth - 8).clamp(
+                          0.0,
+                          constraints.maxWidth,
+                        ),
+                        bottom: -1,
+                        child: Transform.translate(
+                          offset: Offset(capSlideAnimation.value, 0),
+                          child: Transform.scale(
+                            scale: capScaleAnimation.value,
+                            alignment: Alignment.center,
+                            child: Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(
+                                  0xFFFFA173,
+                                ).withValues(alpha: 0.92),
+                                boxShadow: <BoxShadow>[
+                                  BoxShadow(
+                                    color: const Color(
+                                      0xFFFF8D62,
+                                    ).withValues(alpha: 0.26),
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (filledWidth > 0)
+                      Positioned(
+                        left: (filledWidth - 12).clamp(
+                          0.0,
+                          constraints.maxWidth,
+                        ),
+                        bottom: 12,
+                        child: Transform.translate(
+                          offset: Offset(0, labelLiftAnimation.value),
+                          child: Opacity(
+                            opacity: labelOpacityAnimation.value,
+                            child: const Text(
+                              '+1s',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFFFFD7A1),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            );
+          },
         ),
       ),
     );
