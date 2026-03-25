@@ -515,10 +515,13 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     if (_worldSize == null) return;
 
     // 기존 돌 모두 제거 후 중앙 정렬로 다시 스폰 (4단계 연출)
+    _impactHaptic.stop();
     for (final stone in List.from(_activeStones)) {
+      stone.stopTrackingImpacts();
       stone.removeFromParent();
     }
     _activeStones.clear();
+    _impactHaptic.reset();
 
     final zoom = camera.viewfinder.zoom;
     // safeArea를 대략 무시한 디바이스 상단에서 273 픽셀 위치를 월드 좌표로 변환
@@ -945,11 +948,15 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     // 난이도 변경
     difficulty = next;
 
-    // 모든 돌 제거 (world.children에서 직접 조회하여 누락 방지)
+    // 진동 즉시 중단
+    _impactHaptic.stop();
+
+    // 모든 돌의 충돌 추적 해제 후 제거
     final allStones = world.children
         .whereType<FallingPolygonComponent>()
         .toList();
     for (final stone in allStones) {
+      stone.stopTrackingImpacts();
       stone.removeFromParent();
     }
     _activeStones.clear();
@@ -965,6 +972,9 @@ class StackingGame extends Forge2DGame with PanDetector, ScrollDetector {
     }
     towerHeightMeters.value = 0;
     _heightUpdateLocked = false;
+
+    // 진동 다시 활성화
+    _impactHaptic.reset();
 
     // 새로 5개 스폰 (초기 스폰처럼)
     _pendingInitialSpawnCount = initialSpawnCount;

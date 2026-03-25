@@ -12,6 +12,9 @@ class ImpactHapticController {
   /// 마지막 진동 발생 시각 (쿨다운용)
   DateTime _lastHapticTime = DateTime(2000);
 
+  /// 비활성화 시 모든 진동 무시
+  bool _enabled = true;
+
   // ── 튜닝 상수 ──────────────────────────────────────
   /// 연속 진동 최소 간격 (ms)
   static const int _cooldownMs = 80;
@@ -30,6 +33,8 @@ class ImpactHapticController {
   ///
   /// [impactSpeed] : 충돌 순간 돌의 `linearVelocity.length`
   void onImpact(double impactSpeed) {
+    if (!_enabled) return;
+
     final now = DateTime.now();
     final elapsed = now.difference(_lastHapticTime).inMilliseconds;
 
@@ -49,8 +54,23 @@ class ImpactHapticController {
     _lastHapticTime = now;
   }
 
+  /// 모든 진동을 즉시 중단하고, 이후 진동 요청을 무시합니다.
+  void stop() {
+    _enabled = false;
+    _log('haptic STOPPED');
+  }
+
+  /// 진동을 다시 활성화합니다.
+  void reset() {
+    _enabled = true;
+    _lastHapticTime = DateTime(2000);
+    _log('haptic RESET');
+  }
+
   /// 리소스 정리
-  void dispose() {}
+  void dispose() {
+    _enabled = false;
+  }
 
   // ── 강도 매핑 ─────────────────────────────────────
   _HapticIntensity _intensityFromSpeed(double speed) {

@@ -281,8 +281,16 @@ class FallingPolygonComponent extends BodyComponent with ContactCallbacks {
     }
   }
 
+  /// 충돌 추적을 즉시 중단합니다.
+  void stopTrackingImpacts() {
+    _trackingImpacts = false;
+    _impactTrackingRemaining = 0.0;
+    onImpactContact = null;
+  }
+
   @override
   void onRemove() {
+    stopTrackingImpacts();
     onRemoved?.call();
     super.onRemove();
   }
