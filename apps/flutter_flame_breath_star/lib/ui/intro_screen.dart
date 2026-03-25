@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'constellation_game_screen.dart';
@@ -44,14 +45,13 @@ class _IntroScreenState extends State<IntroScreen> {
     final status = await Permission.microphone.request();
     if (mounted) {
       setState(() {
-        _micGranted = status.isGranted;
+        _micGranted = status.isGranted || status.isPermanentlyDenied;
       });
-      if (_micGranted) {
-        _pageController.nextPage(
-          duration: const Duration(milliseconds: 450),
-          curve: Curves.easeInOut,
-        );
-      }
+      // Always advance to next page after request attempt
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeInOut,
+      );
     }
   }
 
@@ -492,18 +492,45 @@ class _IntroScreenState extends State<IntroScreen> {
   }
 }
 
-/// Paints small star dots at pseudo-random positions with varying opacity.
-class _StarField extends StatelessWidget {
+/// Animated star field with slow random twinkling.
+class _StarField extends StatefulWidget {
   final int seed;
-  final int count;
 
-  const _StarField({this.seed = 0, this.count = 18});
+  const _StarField({this.seed = 0});
+
+  @override
+  State<_StarField> createState() => _StarFieldState();
+}
+
+class _StarFieldState extends State<_StarField>
+    with SingleTickerProviderStateMixin {
+  late final Ticker _ticker;
+  double _elapsed = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker((duration) {
+      setState(() {
+        _elapsed = duration.inMicroseconds / 1000000.0;
+      });
+    })..start();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return SizedBox.expand(
       child: CustomPaint(
-        painter: _StarFieldPainter(seed: seed, count: count),
+        painter: _StarFieldPainter(
+          seed: widget.seed,
+          elapsed: _elapsed,
+        ),
       ),
     );
   }
@@ -511,20 +538,29 @@ class _StarField extends StatelessWidget {
 
 class _StarFieldPainter extends CustomPainter {
   final int seed;
-  final int count;
+  final double elapsed;
+  static const int _count = 25;
 
-  _StarFieldPainter({required this.seed, required this.count});
+  _StarFieldPainter({required this.seed, required this.elapsed});
 
   @override
   void paint(Canvas canvas, Size size) {
     final rng = Random(seed);
     final paint = Paint();
 
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < _count; i++) {
       final x = rng.nextDouble() * size.width;
       final y = rng.nextDouble() * size.height;
-      final radius = 1.0 + rng.nextDouble() * 2.0;
-      final opacity = 0.15 + rng.nextDouble() * 0.45;
+      final baseRadius = 0.8 + rng.nextDouble() * 1.8;
+      final baseOpacity = 0.1 + rng.nextDouble() * 0.4;
+      // Each star has its own slow twinkle speed and phase
+      final speed = 0.3 + rng.nextDouble() * 0.6; // 0.3~0.9 Hz
+      final phase = rng.nextDouble() * pi * 2;
+
+      // Slow sinusoidal twinkle
+      final twinkle = (sin(elapsed * speed * pi * 2 + phase) + 1.0) / 2.0;
+      final opacity = (baseOpacity * (0.2 + twinkle * 0.8)).clamp(0.0, 1.0);
+      final radius = baseRadius * (0.7 + twinkle * 0.3);
 
       paint.color = Colors.white.withValues(alpha: opacity);
       canvas.drawCircle(Offset(x, y), radius, paint);
@@ -532,6 +568,5 @@ class _StarFieldPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _StarFieldPainter oldDelegate) =>
-      oldDelegate.seed != seed || oldDelegate.count != count;
+  bool shouldRepaint(covariant _StarFieldPainter oldDelegate) => true;
 }
