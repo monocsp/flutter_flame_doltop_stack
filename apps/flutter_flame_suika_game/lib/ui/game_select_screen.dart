@@ -4,7 +4,7 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 import 'package:flutter_flame_game_2/main.dart';
 
-enum GameCardTitleStyle { normal, rising, growing, breathing }
+enum GameCardTitleStyle { normal, rising, growing, breathing, twinkling }
 
 /// 앱 시작 시 플레이할 게임을 선택할 수 있게 합니다.
 class GameSelectScreen extends StatelessWidget {
@@ -62,7 +62,7 @@ class GameSelectScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 14),
                     const Text(
-                      '스택 게임, 수박게임, 호흡 여정을 선택해 실행할 수 있습니다.',
+                      '스택 게임, 수박게임, 호흡 여정, 별자리 호흡을 선택해 실행할 수 있습니다.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 15,
@@ -97,6 +97,16 @@ class GameSelectScreen extends StatelessWidget {
                       accentColor: const Color(0xFF7ADAA5),
                       onTap: () =>
                           openGame(context, const BreathJourneyRoute()),
+                    ),
+                    const SizedBox(height: 16),
+                    buildGameCard(
+                      context: context,
+                      title: '어디까지 이어지는거에요?',
+                      description: '호흡으로 밤하늘에 별자리를 그려보세요. 숨결이 별을 잇습니다',
+                      titleStyle: GameCardTitleStyle.twinkling,
+                      accentColor: const Color(0xFF9EDCFF),
+                      onTap: () =>
+                          openGame(context, const BreathStarRoute()),
                     ),
                   ],
                 ),
@@ -191,6 +201,8 @@ class GameSelectScreen extends StatelessWidget {
         return GrowingTitleText(text: title);
       case GameCardTitleStyle.breathing:
         return BreathingTitleText(text: title);
+      case GameCardTitleStyle.twinkling:
+        return TwinklingTitleText(text: title);
       case GameCardTitleStyle.normal:
         return Text(
           title,
@@ -362,6 +374,81 @@ class _BreathingTitleTextState extends State<BreathingTitleText>
                               letterSpacing: -0.6,
                               height: 1,
                             ),
+                          ),
+                        ),
+                      );
+                    }),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class TwinklingTitleText extends StatefulWidget {
+  const TwinklingTitleText({super.key, required this.text});
+
+  final String text;
+
+  @override
+  State<TwinklingTitleText> createState() => _TwinklingTitleTextState();
+}
+
+class _TwinklingTitleTextState extends State<TwinklingTitleText>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<String> glyphs = widget.text.split('');
+    return SizedBox(
+      height: 36,
+      child: Align(
+        alignment: Alignment.bottomLeft,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.bottomLeft,
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (BuildContext context, Widget? child) {
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children:
+                    List<Widget>.generate(glyphs.length, (int index) {
+                      final double phase = index / glyphs.length;
+                      final double wave =
+                          sin((_controller.value + phase) * 3.14159 * 3) *
+                              0.5 +
+                          0.5;
+                      final double opacity = lerpDouble(0.4, 1.0, wave)!;
+                      return Opacity(
+                        opacity: opacity,
+                        child: Text(
+                          glyphs[index],
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFFF7F3E9),
+                            letterSpacing: -0.6,
+                            height: 1,
                           ),
                         ),
                       );

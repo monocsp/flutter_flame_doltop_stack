@@ -16,6 +16,8 @@ dependencies:
     path: ../flutter_flame_stacking_game
   flutter_flame_breath_journey_game:
     path: ../flutter_flame_breath_journey_game
+  flutter_flame_breath_star:
+    path: ../flutter_flame_breath_star
   image: ^4.7.2
 
 dev_dependencies:
