@@ -85,30 +85,39 @@ int createBranches({
     }
   }
 
+  // For 2 branches: pick a base direction, then fork narrowly (±25~35 degrees)
+  // For 1 branch: pick freely from upper hemisphere
+  final double baseAngle;
+  if (branchCount == 2) {
+    baseAngle = _pickAngle(existingAngles, random);
+  } else {
+    baseAngle = 0; // unused for single branch
+  }
+
   final newStarIds = <int>[];
   for (int i = 0; i < branchCount; i++) {
-    final angle = _pickAngle(existingAngles, random);
+    double angle;
+    if (branchCount == 2) {
+      // Fork: first goes left of base, second goes right (narrow spread)
+      final spread = 0.45 + random.nextDouble() * 0.2; // ~26-37 degrees
+      angle = baseAngle + (i == 0 ? -spread : spread);
+    } else {
+      angle = _pickAngle(existingAngles, random);
+    }
     existingAngles.add(angle);
 
     // Base distance (shorter for 2 branches)
-    final distanceScale = branchCount == 2 ? 0.6 : 1.0;
-    var distance = (80.0 + breathIntensity * 50.0 + random.nextDouble() * 40.0) * distanceScale;
+    final distanceScale = branchCount == 2 ? 0.5 : 1.0;
+    var distance = (70.0 + breathIntensity * 45.0 + random.nextDouble() * 35.0) * distanceScale;
 
     // Clamp distance so endpoint stays within visible screen bounds
-    final dx = cos(angle) * distance;
-    final dy = sin(angle) * distance;
-    double scale = 1.0;
-    if (dx.abs() > maxDx) {
-      scale = min(scale, maxDx / dx.abs());
-    }
-    if (dy < 0 && dy.abs() > maxDyUp) {
-      // Going upward (negative Y = up in world coords)
-      scale = min(scale, maxDyUp / dy.abs());
-    }
-    if (dy > 0 && dy > maxDyDown) {
-      scale = min(scale, maxDyDown / dy);
-    }
-    distance *= scale;
+    distance = _clampDistanceToScreen(
+      angle: angle,
+      distance: distance,
+      maxDx: maxDx,
+      maxDyUp: maxDyUp,
+      maxDyDown: maxDyDown,
+    );
 
     final endpoint = Offset(
       current.position.dx + cos(angle) * distance,
@@ -130,6 +139,29 @@ int createBranches({
   }
 
   return newStarIds[random.nextInt(newStarIds.length)];
+}
+
+/// Clamp distance so the endpoint stays within visible screen bounds.
+double _clampDistanceToScreen({
+  required double angle,
+  required double distance,
+  required double maxDx,
+  required double maxDyUp,
+  required double maxDyDown,
+}) {
+  final dx = cos(angle) * distance;
+  final dy = sin(angle) * distance;
+  double scale = 1.0;
+  if (dx.abs() > maxDx) {
+    scale = min(scale, maxDx / dx.abs());
+  }
+  if (dy < 0 && dy.abs() > maxDyUp) {
+    scale = min(scale, maxDyUp / dy.abs());
+  }
+  if (dy > 0 && dy > maxDyDown) {
+    scale = min(scale, maxDyDown / dy);
+  }
+  return distance * scale;
 }
 
 /// Pick an angle in the upper hemisphere, avoiding existing angles.
