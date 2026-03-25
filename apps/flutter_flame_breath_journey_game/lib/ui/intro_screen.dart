@@ -232,7 +232,7 @@ class _IntroScreenState extends State<IntroScreen> {
                 child: SvgPicture.asset(
                   'assets/dandelion_seed.svg',
                   package: 'flutter_flame_breath_journey_game',
-                  width: 60,
+                    width: 60,
                   height: 60,
                 ),
               ),
@@ -248,7 +248,7 @@ class _IntroScreenState extends State<IntroScreen> {
                 child: SvgPicture.asset(
                   'assets/dandelion_seed.svg',
                   package: 'flutter_flame_breath_journey_game',
-                  width: 45,
+                    width: 45,
                   height: 45,
                 ),
               ),

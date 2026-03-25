@@ -816,7 +816,6 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
             transform: Matrix4.identity()..rotateZ(_dandelionSway),
             child: SvgPicture.asset(
               'assets/dandelion.svg',
-              package: 'flutter_flame_breath_journey_game',
               width: 200,
               height: 300,
             ),
