@@ -67,11 +67,9 @@ int createBranches({
   final branchCount = random.nextDouble() < 0.7 ? 1 : 2;
 
   // Calculate safe distance limits based on visible screen area
-  // The current star sits at ~75% screen height (bottom 25%), so
-  // upward space is larger than sideways space.
-  final maxDx = screenSize.width / cameraZoom * 0.38;  // ~38% of visible width
-  final maxDyUp = screenSize.height / cameraZoom * 0.30; // upward from current star
-  final maxDyDown = screenSize.height / cameraZoom * 0.12; // downward (less space)
+  final maxDx = screenSize.width / cameraZoom * 0.38;
+  final maxDyUp = screenSize.height / cameraZoom * 0.30;
+  final maxDyDown = screenSize.height / cameraZoom * 0.12;
 
   // Collect existing edge angles from this star to avoid overlap
   final existingAngles = <double>[];
@@ -85,32 +83,40 @@ int createBranches({
     }
   }
 
-  // For 2 branches: pick a base direction, then fork narrowly (±25~35 degrees)
-  // For 1 branch: pick freely from upper hemisphere
-  final double baseAngle;
+  // Determine angles for all branches
+  final List<double> branchAngles;
   if (branchCount == 2) {
-    baseAngle = _pickAngle(existingAngles, random);
+    // Pick a base direction that avoids existing edges
+    final baseAngle = _pickAngle(existingAngles, random);
+    final spread = 0.45 + random.nextDouble() * 0.2; // ±26-37 degrees
+    var leftAngle = baseAngle - spread;
+    var rightAngle = baseAngle + spread;
+
+    // If either fork overlaps existing edges, rotate the pair
+    for (int attempt = 0; attempt < 10; attempt++) {
+      if (_isAngleSafe(leftAngle, existingAngles, 0.4) &&
+          _isAngleSafe(rightAngle, existingAngles, 0.4)) {
+        break;
+      }
+      final rotation = 0.35 * (attempt.isEven ? 1 : -1) * (attempt + 1);
+      leftAngle = baseAngle + rotation - spread;
+      rightAngle = baseAngle + rotation + spread;
+    }
+    branchAngles = [leftAngle, rightAngle];
   } else {
-    baseAngle = 0; // unused for single branch
+    branchAngles = [_pickAngle(existingAngles, random)];
   }
 
+  // Create stars at computed angles
   final newStarIds = <int>[];
-  for (int i = 0; i < branchCount; i++) {
-    double angle;
-    if (branchCount == 2) {
-      // Fork: first goes left of base, second goes right (narrow spread)
-      final spread = 0.45 + random.nextDouble() * 0.2; // ~26-37 degrees
-      angle = baseAngle + (i == 0 ? -spread : spread);
-    } else {
-      angle = _pickAngle(existingAngles, random);
-    }
+  for (final angle in branchAngles) {
     existingAngles.add(angle);
 
-    // Base distance (shorter for 2 branches)
     final distanceScale = branchCount == 2 ? 0.5 : 1.0;
-    var distance = (70.0 + breathIntensity * 45.0 + random.nextDouble() * 35.0) * distanceScale;
+    var distance =
+        (70.0 + breathIntensity * 45.0 + random.nextDouble() * 35.0) *
+            distanceScale;
 
-    // Clamp distance so endpoint stays within visible screen bounds
     distance = _clampDistanceToScreen(
       angle: angle,
       distance: distance,
@@ -164,20 +170,24 @@ double _clampDistanceToScreen({
   return distance * scale;
 }
 
+/// Check if an angle is far enough from all existing angles.
+bool _isAngleSafe(double angle, List<double> existing, double minSep) {
+  for (final ea in existing) {
+    // Handle angle wrapping
+    var diff = (angle - ea).abs();
+    if (diff > pi) diff = 2 * pi - diff;
+    if (diff < minSep) return false;
+  }
+  return true;
+}
+
 /// Pick an angle in the upper hemisphere, avoiding existing angles.
 double _pickAngle(List<double> existing, Random random) {
-  const minSeparation = 0.5; // ~29 degrees
-  for (int attempt = 0; attempt < 20; attempt++) {
+  const minSeparation = 0.6; // ~34 degrees minimum separation
+  for (int attempt = 0; attempt < 30; attempt++) {
     // Range: roughly -170 to -10 degrees (upper hemisphere, going upward)
     final angle = -pi + random.nextDouble() * pi * 0.9 + 0.05 * pi;
-    bool tooClose = false;
-    for (final ea in existing) {
-      if ((angle - ea).abs() < minSeparation) {
-        tooClose = true;
-        break;
-      }
-    }
-    if (!tooClose) return angle;
+    if (_isAngleSafe(angle, existing, minSeparation)) return angle;
   }
   // Fallback: random upward angle
   return -pi * 0.5 + (random.nextDouble() - 0.5) * pi * 0.8;

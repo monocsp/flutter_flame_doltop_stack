@@ -702,24 +702,25 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
       backgroundColor: _kBackground,
       body: Stack(
         children: [
-          // Full-screen constellation painter
-          Positioned.fill(
-            child: RepaintBoundary(
-              child: CustomPaint(
-                painter: _ConstellationPainter(
-                  constellation: _constellation,
-                  activeEdges: _activeEdges,
-                  particlePool: _particlePool,
-                  bgDots: _bgDots,
-                  cameraPosition: _cameraPosition,
-                  cameraZoom: _cameraZoom,
-                  elapsedTime: _elapsedTime,
-                  breathActive: _breathActive,
-                  breathLevel: _breathLevel,
-                  repaintNotifier: _repaintNotifier,
+          // Full-screen constellation painter (hidden during prepare/inhale)
+          if (_phase == _GamePhase.exhale || _phase == _GamePhase.roundBreak)
+            Positioned.fill(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _ConstellationPainter(
+                    constellation: _constellation,
+                    activeEdges: _activeEdges,
+                    particlePool: _particlePool,
+                    bgDots: _bgDots,
+                    cameraPosition: _cameraPosition,
+                    cameraZoom: _cameraZoom,
+                    elapsedTime: _elapsedTime,
+                    breathActive: _breathActive,
+                    breathLevel: _breathLevel,
+                    repaintNotifier: _repaintNotifier,
+                  ),
                 ),
               ),
-            ),
           ),
           // UI overlay
           switch (_phase) {
