@@ -513,25 +513,15 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     );
   }
 
+  bool _branchesCreatedThisRound = false;
+
   void _startExhalePhase() {
     if (!mounted) return;
 
-    // Create branches from current star
+    // Don't create branches yet — wait for first breath detection
     _constellation.currentStarId = _nextStartStarId;
-    final screenSize = MediaQuery.of(context).size;
-    final nextId = createBranches(
-      state: _constellation,
-      random: _random,
-      breathIntensity: 0.5,
-      screenSize: screenSize,
-      cameraZoom: _cameraZoom,
-    );
-    _nextStartStarId = nextId;
-
-    // Identify the newly created edges (growthProgress == 0)
-    _activeEdges = _constellation.edges
-        .where((e) => e.growthProgress == 0.0)
-        .toList();
+    _activeEdges = [];
+    _branchesCreatedThisRound = false;
 
     setState(() {
       _phase = _GamePhase.exhale;
@@ -605,6 +595,23 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
       if (_consecutiveAboveTicks < _sustainedTicksRequired) return;
       _breathActive = true;
 
+      // Create branches on first breath detection
+      if (!_branchesCreatedThisRound) {
+        _branchesCreatedThisRound = true;
+        final screenSize = MediaQuery.of(context).size;
+        final nextId = createBranches(
+          state: _constellation,
+          random: _random,
+          breathIntensity: _breathLevel,
+          screenSize: screenSize,
+          cameraZoom: _cameraZoom,
+        );
+        _nextStartStarId = nextId;
+        _activeEdges = _constellation.edges
+            .where((e) => e.growthProgress == 0.0)
+            .toList();
+      }
+
       if (!_everDetectedThisRound) {
         _everDetectedThisRound = true;
         _noDetectionTimer?.cancel();
@@ -653,15 +660,40 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     _breathPollTimer = null;
     _noDetectionTimer?.cancel();
 
-    // Snap all active edges to complete and trigger bloom on endpoint stars
+    // Finalize edges at their CURRENT progress position (not snapped to 1.0)
+    const minProgress = 0.15;
+    final edgesToRemove = <StarEdge>[];
     for (final edge in _activeEdges) {
-      edge.growthProgress = 1.0;
-      final toStar = _constellation.starById(edge.toStarId);
-      if (toStar.bloomProgress <= 0) {
-        toStar.bloomProgress = 0.01; // kick off bloom
+      if (edge.growthProgress >= minProgress) {
+        // Move the endpoint star to where the line actually reached
+        final fromStar = _constellation.starById(edge.fromStarId);
+        final toStar = _constellation.starById(edge.toStarId);
+        final actualPos = Offset.lerp(
+          fromStar.position,
+          toStar.position,
+          edge.growthProgress,
+        )!;
+        toStar.position = actualPos;
+        edge.growthProgress = 1.0;
+        if (toStar.bloomProgress <= 0) {
+          toStar.bloomProgress = 0.01;
+        }
+      } else {
+        edgesToRemove.add(edge);
       }
     }
+    for (final edge in edgesToRemove) {
+      _constellation.edges.remove(edge);
+      _constellation.stars.removeWhere((s) => s.id == edge.toStarId);
+    }
     _activeEdges = [];
+
+    // If next start star was removed, fall back to current star
+    final hasNextStar =
+        _constellation.stars.any((s) => s.id == _nextStartStarId);
+    if (!hasNextStar) {
+      _nextStartStarId = _constellation.currentStarId;
+    }
 
     // Animate camera to the next start star
     final nextStar = _constellation.starById(_nextStartStarId);
@@ -702,8 +734,8 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
       backgroundColor: _kBackground,
       body: Stack(
         children: [
-          // Full-screen constellation painter (hidden during prepare/inhale)
-          if (_phase == _GamePhase.exhale || _phase == _GamePhase.roundBreak)
+          // Constellation painter: hidden only during first round prepare/inhale
+          if (!(_round == 0 && (_phase == _GamePhase.prepare || _phase == _GamePhase.inhale)))
             Positioned.fill(
               child: RepaintBoundary(
                 child: CustomPaint(
@@ -1136,14 +1168,15 @@ class _ConstellationPainter extends CustomPainter {
           screenPos.dy > size.height + 20) {
         continue;
       }
+      // Very slow twinkle to avoid flickering with countdown
       final twinkle =
-          0.7 + 0.3 * sin(elapsedTime * 1.5 + dot.position.dx * 0.1);
+          0.7 + 0.3 * sin(elapsedTime * 0.4 + dot.position.dx * 0.1);
       _bgDotPaint.color = Colors.white
           .withValues(alpha: dot.baseOpacity * twinkle);
       canvas.drawCircle(screenPos, dot.radius * cameraZoom * 0.5, _bgDotPaint);
     }
 
-    // 3. Completed edges
+    // 3. Edges (shorten lines so they don't overlap star centers)
     for (final edge in constellation.edges) {
       if (edge.growthProgress <= 0) continue;
 
@@ -1154,23 +1187,40 @@ class _ConstellationPainter extends CustomPainter {
       final isActive = activeEdges.contains(edge);
 
       if (edge.growthProgress >= 1.0 && !isActive) {
-        // Fully completed edge
+        // Fully completed edge — shorten both ends to avoid overlapping stars
         final toScreen = _worldToScreen(toStar.position, size);
-        _edgePaint
-          ..color = _kAccent.withValues(alpha: 0.6)
-          ..strokeWidth = 1.5 * cameraZoom;
-        canvas.drawLine(fromScreen, toScreen, _edgePaint);
+        final dir = toScreen - fromScreen;
+        final len = dir.distance;
+        if (len > 1) {
+          final norm = dir / len;
+          final fromInset = fromStar.radius * cameraZoom * 1.2;
+          final toInset = toStar.radius * cameraZoom * 1.2;
+          final p1 = fromScreen + norm * fromInset;
+          final p2 = toScreen - norm * toInset;
+          _edgePaint
+            ..color = _kAccent.withValues(alpha: 0.6)
+            ..strokeWidth = 1.5 * cameraZoom;
+          canvas.drawLine(p1, p2, _edgePaint);
+        }
       } else {
         // Growing edge
         final tip = Offset.lerp(fromStar.position, toStar.position,
             edge.growthProgress.clamp(0.0, 1.0))!;
         final tipScreen = _worldToScreen(tip, size);
 
-        // Line
+        // Shorten from start star
+        final dir = tipScreen - fromScreen;
+        final len = dir.distance;
+        Offset lineStart = fromScreen;
+        if (len > 1) {
+          final norm = dir / len;
+          lineStart = fromScreen + norm * (fromStar.radius * cameraZoom * 1.2);
+        }
+
         _edgePaint
           ..color = _kAccent.withValues(alpha: 0.5)
           ..strokeWidth = 1.5 * cameraZoom;
-        canvas.drawLine(fromScreen, tipScreen, _edgePaint);
+        canvas.drawLine(lineStart, tipScreen, _edgePaint);
 
         // Glow circle at tip
         final tipGlowRadius = 4.0 * cameraZoom;

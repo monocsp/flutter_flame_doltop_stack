@@ -11,7 +11,7 @@ class StarNode {
   });
 
   final int id;
-  final Offset position;
+  Offset position;
   final double radius;
   final double flickerPhase;
   double bloomProgress;
@@ -109,14 +109,16 @@ int createBranches({
 
   // Create stars at computed angles
   final newStarIds = <int>[];
-  for (final angle in branchAngles) {
+  for (int idx = 0; idx < branchAngles.length; idx++) {
+    final angle = branchAngles[idx];
     existingAngles.add(angle);
 
-    // Each branch gets its own random length variation
-    // For 2 branches: one tends longer (0.55-0.7), one shorter (0.3-0.5)
+    // For 2 branches: first is short (0.3-0.45), second is long (0.6-0.8)
     final double distanceScale;
     if (branchCount == 2) {
-      distanceScale = 0.3 + random.nextDouble() * 0.4; // 0.3~0.7 individually
+      distanceScale = idx == 0
+          ? 0.3 + random.nextDouble() * 0.15  // short: 0.30~0.45
+          : 0.6 + random.nextDouble() * 0.2;  // long:  0.60~0.80
     } else {
       distanceScale = 1.0;
     }

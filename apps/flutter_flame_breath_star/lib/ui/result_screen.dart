@@ -410,9 +410,15 @@ class _ResultScreenState extends State<ResultScreen>
             left: 12,
             top: MediaQuery.of(context).padding.top + 8,
             child: IconButton(
-              onPressed: () => Navigator.of(context).popUntil(
-                (route) => route.isFirst,
-              ),
+              onPressed: () {
+                // Pop back through pushReplacement chain to game hub
+                Navigator.of(context).popUntil((route) => route.isFirst);
+                // If popUntil didn't navigate (all routes were pushReplacement),
+                // force pop
+                if (Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                }
+              },
               style: IconButton.styleFrom(
                 backgroundColor: Colors.white.withValues(alpha: 0.07),
               ),
