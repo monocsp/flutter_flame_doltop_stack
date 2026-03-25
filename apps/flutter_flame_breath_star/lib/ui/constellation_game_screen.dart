@@ -308,12 +308,18 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
       }
     }
 
-    // ── Edge growth during exhale ──
+    // ── Edge growth during exhale (logarithmic deceleration) ──
     if (_phase == _GamePhase.exhale && !_endingExhale && _breathActive) {
+      bool anyCompleted = false;
       for (final edge in _activeEdges) {
         if (edge.growthProgress < 1.0) {
+          // Logarithmic slowdown: speed = base * (1 - progress^1.5)
+          // Fast at start, decelerates toward the end
+          final remaining = 1.0 - edge.growthProgress;
+          final speedFactor = remaining.clamp(0.15, 1.0); // min 15% speed
           edge.growthProgress =
-              (edge.growthProgress + _breathLevel * 0.8 * dt).clamp(0.0, 1.0);
+              (edge.growthProgress + _breathLevel * 1.2 * speedFactor * dt)
+                  .clamp(0.0, 1.0);
 
           // When line reaches endpoint, trigger star bloom
           if (edge.growthProgress >= 1.0) {
@@ -321,8 +327,14 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
             if (toStar.bloomProgress <= 0) {
               toStar.bloomProgress = 0.01;
             }
+            anyCompleted = true;
           }
         }
+      }
+
+      // ── Chain branching: when all active edges complete, spawn new ones ──
+      if (anyCompleted && _activeEdges.every((e) => e.growthProgress >= 1.0)) {
+        _chainBranch();
       }
     }
 
@@ -579,6 +591,35 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
         }
       }
     });
+  }
+
+  /// Chain branching: when active edges complete during exhale,
+  /// pick a random completed endpoint and spawn new branches from it.
+  void _chainBranch() {
+    // Find the last completed edge's endpoint
+    final completedEndpoints = _activeEdges
+        .where((e) => e.growthProgress >= 1.0)
+        .map((e) => e.toStarId)
+        .toList();
+    if (completedEndpoints.isEmpty) return;
+
+    // Pick random endpoint as next branch origin
+    final nextOriginId =
+        completedEndpoints[_random.nextInt(completedEndpoints.length)];
+    _constellation.currentStarId = nextOriginId;
+
+    // Create new branch(es) from that star
+    final nextId = createBranches(
+      state: _constellation,
+      random: _random,
+      breathIntensity: _breathLevel,
+    );
+    _nextStartStarId = nextId;
+
+    // Collect newly created edges
+    _activeEdges = _constellation.edges
+        .where((e) => e.growthProgress == 0.0)
+        .toList();
   }
 
   void _endExhale() {

@@ -34,24 +34,27 @@ class _IntroScreenState extends State<IntroScreen> {
   Future<void> _checkMicPermission() async {
     final status = await Permission.microphone.status;
     if (mounted) {
+      // granted, limited, or permanentlyDenied all mean "already decided"
+      final alreadyDecided =
+          status.isGranted || status.isLimited || status.isPermanentlyDenied;
       setState(() {
-        _micGranted = status.isGranted || status.isPermanentlyDenied;
+        _micGranted = alreadyDecided;
         _checked = true;
       });
     }
   }
 
   Future<void> _requestMicPermission() async {
-    final status = await Permission.microphone.request();
+    await Permission.microphone.request();
     if (mounted) {
-      setState(() {
-        _micGranted = status.isGranted || status.isPermanentlyDenied;
-      });
-      // Always advance to next page after request attempt
-      _pageController.nextPage(
+      // Move to start page first, then remove mic page from list
+      await _pageController.nextPage(
         duration: const Duration(milliseconds: 450),
         curve: Curves.easeInOut,
       );
+      if (mounted) {
+        setState(() => _micGranted = true);
+      }
     }
   }
 
