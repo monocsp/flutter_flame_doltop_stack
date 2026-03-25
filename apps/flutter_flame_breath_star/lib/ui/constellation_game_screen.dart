@@ -824,10 +824,12 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
               ),
             ),
             const SizedBox(height: 36),
-            const Text(
-              '입을 마이크에\n가까이 대세요',
+            Text(
+              _round == 0
+                  ? '입을 마이크에\n가까이 대세요'
+                  : '다음 별을\n이어볼까요?',
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: _kText,
                 fontSize: 24,
                 fontWeight: FontWeight.w600,
@@ -836,12 +838,13 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
             ),
             const SizedBox(height: 12),
             Text(
-              '별빛을 이을 준비를 해요',
+              _round == 0 ? '별빛을 이을 준비를 해요' : '별빛이 기다리고 있어요',
               style: TextStyle(
                 color: _kTextMuted.withValues(alpha: 0.7),
                 fontSize: 14,
               ),
             ),
+            if (_round == 0) ...[
             const SizedBox(height: 18),
             Container(
               padding: const EdgeInsets.all(12),
@@ -855,6 +858,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
                 size: 36,
               ),
             ),
+            ],
           ],
         ),
       ),

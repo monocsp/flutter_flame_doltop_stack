@@ -112,7 +112,14 @@ int createBranches({
   for (final angle in branchAngles) {
     existingAngles.add(angle);
 
-    final distanceScale = branchCount == 2 ? 0.5 : 1.0;
+    // Each branch gets its own random length variation
+    // For 2 branches: one tends longer (0.55-0.7), one shorter (0.3-0.5)
+    final double distanceScale;
+    if (branchCount == 2) {
+      distanceScale = 0.3 + random.nextDouble() * 0.4; // 0.3~0.7 individually
+    } else {
+      distanceScale = 1.0;
+    }
     var distance =
         (70.0 + breathIntensity * 45.0 + random.nextDouble() * 35.0) *
             distanceScale;
