@@ -418,8 +418,10 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     // Notify painter
     _repaintNotifier.notify();
 
-    // Lightweight setState for UI overlays during exhale
-    if (_phase == _GamePhase.exhale) {
+    // setState for UI overlays + camera position updates to painter
+    if (_phase == _GamePhase.exhale ||
+        _phase == _GamePhase.roundBreak ||
+        _cameraAnimController.isAnimating) {
       setState(() {});
     }
   }
@@ -920,9 +922,12 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
   Widget _buildExhalePhase() {
     return Stack(
       children: [
-        // UI overlay
-        SafeArea(
-          child: Column(
+        // UI overlay — fades out when breath is detected
+        AnimatedOpacity(
+          opacity: _breathActive ? 0.0 : 1.0,
+          duration: const Duration(milliseconds: 400),
+          child: SafeArea(
+            child: Column(
             children: [
               const SizedBox(height: 28),
               _buildRoundBadge(),
@@ -1003,6 +1008,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
               ),
             ],
           ),
+        ),
         ),
       ],
     );

@@ -172,15 +172,20 @@ class _ResultScreenState extends State<ResultScreen>
     }
   }
 
-  double _computeTargetZoom(Size screenSize) {
+  double _computeTargetZoom(Size screenSize, EdgeInsets safeArea) {
     if (widget.constellation.stars.isEmpty) return 1.0;
 
     final bounds = widget.constellation.boundingBox;
     final padding = max(bounds.shortestSide * 0.3, 80.0);
     final paddedBounds = bounds.inflate(padding);
 
-    final zoomX = screenSize.width / paddedBounds.width;
-    final zoomY = (screenSize.height * 0.55) / paddedBounds.height;
+    // Account for safeArea so stars don't get clipped by notch/dynamic island
+    final safeWidth = screenSize.width - safeArea.left - safeArea.right;
+    final safeHeight =
+        (screenSize.height - safeArea.top - safeArea.bottom) * 0.50;
+
+    final zoomX = safeWidth / paddedBounds.width;
+    final zoomY = safeHeight / paddedBounds.height;
     return min(zoomX, zoomY).clamp(0.3, 3.0);
   }
 
@@ -210,7 +215,8 @@ class _ResultScreenState extends State<ResultScreen>
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
-    _targetZoom = _computeTargetZoom(screenSize);
+    final safeArea = MediaQuery.of(context).padding;
+    _targetZoom = _computeTargetZoom(screenSize, safeArea);
 
     // Interpolate camera
     final t = _zoomCurve.value;
