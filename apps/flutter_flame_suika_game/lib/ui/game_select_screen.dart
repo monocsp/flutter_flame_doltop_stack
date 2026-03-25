@@ -30,15 +30,12 @@ class GameSelectScreen extends StatelessWidget {
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 560),
-              child: Padding(
+              child: ListView(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24,
                   vertical: 32,
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
+                children: <Widget>[
                     const Text(
                       'FLAME GAME HUB',
                       textAlign: TextAlign.center,
@@ -110,7 +107,6 @@ class GameSelectScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-              ),
             ),
           ),
         ),

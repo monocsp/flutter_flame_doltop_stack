@@ -171,8 +171,11 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
 
   // ── Camera ──
   Offset _cameraPosition = Offset.zero;
-  Offset _cameraTarget = Offset.zero;
+  Offset _cameraFrom = Offset.zero;
+  Offset _cameraTo = Offset.zero;
   final double _cameraZoom = 1.8;
+  late AnimationController _cameraAnimController;
+  late Animation<double> _cameraCurve;
 
   // ── Background star dust ──
   late final List<_BackgroundDot> _bgDots;
@@ -246,7 +249,17 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     _nextStartStarId = originStar.id;
 
     _cameraPosition = Offset.zero;
-    _cameraTarget = Offset.zero;
+    _cameraFrom = Offset.zero;
+    _cameraTo = Offset.zero;
+
+    _cameraAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _cameraCurve = CurvedAnimation(
+      parent: _cameraAnimController,
+      curve: Curves.easeInOutCubic,
+    );
 
     _ticker = createTicker(_onTick)..start();
     _startPreparePhase();
@@ -260,6 +273,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     _noDetectionTimer?.cancel();
     _noiseSubscription?.cancel();
     _repaintNotifier.dispose();
+    _cameraAnimController.dispose();
     super.dispose();
   }
 
@@ -295,11 +309,14 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
 
     _elapsedTime += dt;
 
-    // ── Camera interpolation (fast and smooth) ──
-    _cameraPosition = Offset(
-      _cameraPosition.dx + (_cameraTarget.dx - _cameraPosition.dx) * 4.5 * dt,
-      _cameraPosition.dy + (_cameraTarget.dy - _cameraPosition.dy) * 4.5 * dt,
-    );
+    // ── Camera interpolation (AnimationController-driven) ──
+    if (_cameraAnimController.isAnimating) {
+      _cameraPosition = Offset.lerp(
+        _cameraFrom,
+        _cameraTo,
+        _cameraCurve.value,
+      )!;
+    }
 
     // ── Star bloom animation (only for stars with bloomProgress > 0) ──
     for (final star in _constellation.stars) {
@@ -499,10 +516,13 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
 
     // Create branches from current star
     _constellation.currentStarId = _nextStartStarId;
+    final screenSize = MediaQuery.of(context).size;
     final nextId = createBranches(
       state: _constellation,
       random: _random,
       breathIntensity: 0.5,
+      screenSize: screenSize,
+      cameraZoom: _cameraZoom,
     );
     _nextStartStarId = nextId;
 
@@ -613,6 +633,8 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
       state: _constellation,
       random: _random,
       breathIntensity: _breathLevel,
+      screenSize: MediaQuery.of(context).size,
+      cameraZoom: _cameraZoom,
     );
     _nextStartStarId = nextId;
 
@@ -639,9 +661,11 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     }
     _activeEdges = [];
 
-    // Set camera target to the next start star
+    // Animate camera to the next start star
     final nextStar = _constellation.starById(_nextStartStarId);
-    _cameraTarget = nextStar.position;
+    _cameraFrom = _cameraPosition;
+    _cameraTo = nextStar.position;
+    _cameraAnimController.forward(from: 0);
 
     setState(() {
       _phase = _GamePhase.roundBreak;

@@ -55,13 +55,23 @@ class ConstellationState {
 
 /// Creates 1-2 branches from the current star.
 /// Returns the id of the randomly selected next start star.
+/// [screenSize] and [cameraZoom] are used to ensure new stars stay on screen.
 int createBranches({
   required ConstellationState state,
   required Random random,
   required double breathIntensity,
+  required Size screenSize,
+  required double cameraZoom,
 }) {
   final current = state.currentStar;
   final branchCount = random.nextDouble() < 0.7 ? 1 : 2;
+
+  // Calculate safe distance limits based on visible screen area
+  // The current star sits at ~75% screen height (bottom 25%), so
+  // upward space is larger than sideways space.
+  final maxDx = screenSize.width / cameraZoom * 0.38;  // ~38% of visible width
+  final maxDyUp = screenSize.height / cameraZoom * 0.30; // upward from current star
+  final maxDyDown = screenSize.height / cameraZoom * 0.12; // downward (less space)
 
   // Collect existing edge angles from this star to avoid overlap
   final existingAngles = <double>[];
@@ -80,9 +90,26 @@ int createBranches({
     final angle = _pickAngle(existingAngles, random);
     existingAngles.add(angle);
 
-    // 2 branches → shorter distance so both fit on screen
+    // Base distance (shorter for 2 branches)
     final distanceScale = branchCount == 2 ? 0.6 : 1.0;
-    final distance = (80.0 + breathIntensity * 50.0 + random.nextDouble() * 40.0) * distanceScale;
+    var distance = (80.0 + breathIntensity * 50.0 + random.nextDouble() * 40.0) * distanceScale;
+
+    // Clamp distance so endpoint stays within visible screen bounds
+    final dx = cos(angle) * distance;
+    final dy = sin(angle) * distance;
+    double scale = 1.0;
+    if (dx.abs() > maxDx) {
+      scale = min(scale, maxDx / dx.abs());
+    }
+    if (dy < 0 && dy.abs() > maxDyUp) {
+      // Going upward (negative Y = up in world coords)
+      scale = min(scale, maxDyUp / dy.abs());
+    }
+    if (dy > 0 && dy > maxDyDown) {
+      scale = min(scale, maxDyDown / dy);
+    }
+    distance *= scale;
+
     final endpoint = Offset(
       current.position.dx + cos(angle) * distance,
       current.position.dy + sin(angle) * distance,
