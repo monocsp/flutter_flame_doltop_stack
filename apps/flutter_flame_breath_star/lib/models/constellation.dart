@@ -80,8 +80,9 @@ int createBranches({
     final angle = _pickAngle(existingAngles, random);
     existingAngles.add(angle);
 
-    // Distance influenced by breath intensity + randomness
-    final distance = 100.0 + breathIntensity * 60.0 + random.nextDouble() * 50.0;
+    // 2 branches → shorter distance so both fit on screen
+    final distanceScale = branchCount == 2 ? 0.6 : 1.0;
+    final distance = (80.0 + breathIntensity * 50.0 + random.nextDouble() * 40.0) * distanceScale;
     final endpoint = Offset(
       current.position.dx + cos(angle) * distance,
       current.position.dy + sin(angle) * distance,

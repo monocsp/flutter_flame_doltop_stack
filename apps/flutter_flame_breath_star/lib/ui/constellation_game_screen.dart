@@ -295,15 +295,15 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
 
     _elapsedTime += dt;
 
-    // ── Camera interpolation ──
+    // ── Camera interpolation (fast and smooth) ──
     _cameraPosition = Offset(
-      _cameraPosition.dx + (_cameraTarget.dx - _cameraPosition.dx) * 2.0 * dt,
-      _cameraPosition.dy + (_cameraTarget.dy - _cameraPosition.dy) * 2.0 * dt,
+      _cameraPosition.dx + (_cameraTarget.dx - _cameraPosition.dx) * 4.5 * dt,
+      _cameraPosition.dy + (_cameraTarget.dy - _cameraPosition.dy) * 4.5 * dt,
     );
 
-    // ── Star bloom animation ──
+    // ── Star bloom animation (only for stars with bloomProgress > 0) ──
     for (final star in _constellation.stars) {
-      if (star.bloomProgress < 1.0) {
+      if (star.bloomProgress > 0 && star.bloomProgress < 1.0) {
         star.bloomProgress = (star.bloomProgress + 1.5 * dt).clamp(0.0, 1.0);
       }
     }
@@ -314,6 +314,14 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
         if (edge.growthProgress < 1.0) {
           edge.growthProgress =
               (edge.growthProgress + _breathLevel * 0.8 * dt).clamp(0.0, 1.0);
+
+          // When line reaches endpoint, trigger star bloom
+          if (edge.growthProgress >= 1.0) {
+            final toStar = _constellation.starById(edge.toStarId);
+            if (toStar.bloomProgress <= 0) {
+              toStar.bloomProgress = 0.01;
+            }
+          }
         }
       }
     }
@@ -580,15 +588,11 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     _breathPollTimer = null;
     _noDetectionTimer?.cancel();
 
-    // Snap all active edges to complete
+    // Snap all active edges to complete and trigger bloom on endpoint stars
     for (final edge in _activeEdges) {
       edge.growthProgress = 1.0;
-    }
-
-    // Start bloom on new endpoint stars
-    for (final edge in _activeEdges) {
       final toStar = _constellation.starById(edge.toStarId);
-      if (toStar.bloomProgress == 0.0) {
+      if (toStar.bloomProgress <= 0) {
         toStar.bloomProgress = 0.01; // kick off bloom
       }
     }

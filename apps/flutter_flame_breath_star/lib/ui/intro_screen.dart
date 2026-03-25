@@ -35,7 +35,7 @@ class _IntroScreenState extends State<IntroScreen> {
     final status = await Permission.microphone.status;
     if (mounted) {
       setState(() {
-        _micGranted = status.isGranted;
+        _micGranted = status.isGranted || status.isPermanentlyDenied;
         _checked = true;
       });
     }
