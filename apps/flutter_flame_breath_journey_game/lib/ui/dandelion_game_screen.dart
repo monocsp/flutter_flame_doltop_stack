@@ -149,6 +149,16 @@ class _ParticlePool {
   }
 }
 
+// ─────────────────────────────────────────────
+// Mutable render state read by painters (no rebuild needed)
+// ─────────────────────────────────────────────
+
+class _DandelionRenderState {
+  double dandelionSway = 0;
+  double breathLevel = 0;
+  bool breathActive = false;
+}
+
 class DandelionGameScreen extends StatefulWidget {
   const DandelionGameScreen({super.key});
 
@@ -166,14 +176,21 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
   static const double _maxExhaleSecs = 5.0;
   static const int _sustainedTicksRequired = 2;
 
-  // ── Game state ──
-  _GamePhase _phase = _GamePhase.prepare;
-  int _round = 0;
-  int _countdown = 3;
-  double _exhaleElapsed = 0;
+  // ── ValueNotifiers (drive UI via ValueListenableBuilder) ──
+  final ValueNotifier<_GamePhase> _phase =
+      ValueNotifier<_GamePhase>(_GamePhase.prepare);
+  final ValueNotifier<int> _round = ValueNotifier<int>(0);
+  final ValueNotifier<int> _countdown = ValueNotifier<int>(3);
+  final ValueNotifier<double> _exhaleElapsed = ValueNotifier<double>(0);
+  final ValueNotifier<double> _breathLevel = ValueNotifier<double>(0);
+  final ValueNotifier<bool> _breathActive = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _showNoDetectionHint = ValueNotifier<bool>(false);
+  final ValueNotifier<double> _dandelionSway = ValueNotifier<double>(0);
+
+  // ── Plain fields (internal logic only) ──
+  bool _endingExhale = false;
   int _totalSeeds = 0;
   int _lastRoundSeeds = 0;
-  bool _endingExhale = false;
 
   // ── Seed animation ──
   final List<_FlyingSeed> _seeds = [];
@@ -184,8 +201,11 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
   late Ticker _ticker;
   Duration _lastTickElapsed = Duration.zero;
 
-  // ── Repaint notifier — drives CustomPainter without setState ──
+  // ── Repaint notifier — drives CustomPainter without rebuild ──
   final _GameRepaintNotifier _repaintNotifier = _GameRepaintNotifier();
+
+  // ── Render state read by painters ──
+  final _DandelionRenderState _renderState = _DandelionRenderState();
 
   // ── Noise ──
   StreamSubscription<NoiseReading>? _noiseSubscription;
@@ -199,18 +219,12 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
 
   // ── Sustained detection ──
   int _consecutiveAboveTicks = 0;
-  bool _breathActive = false;
-
-  // ── Visual feedback (0.0 = silent, 1.0 = max breath) ──
-  double _breathLevel = 0.0;
 
   // ── No-detection hint ──
-  bool _showNoDetectionHint = false;
   Timer? _noDetectionTimer;
   bool _everDetectedThisRound = false;
 
-  // ── Dandelion sway ──
-  double _dandelionSway = 0;
+  // ── Dandelion sway (internal) ──
   double _swayTarget = 0;
 
   Timer? _countdownTimer;
@@ -231,6 +245,15 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
     _noDetectionTimer?.cancel();
     _noiseSubscription?.cancel();
     _repaintNotifier.dispose();
+    // Dispose all ValueNotifiers
+    _phase.dispose();
+    _round.dispose();
+    _countdown.dispose();
+    _exhaleElapsed.dispose();
+    _breathLevel.dispose();
+    _breathActive.dispose();
+    _showNoDetectionHint.dispose();
+    _dandelionSway.dispose();
     super.dispose();
   }
 
@@ -248,7 +271,7 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
 
     if (dt <= 0 || dt > 0.1 || !mounted) return;
 
-    // Update seeds (no setState — painter reads these directly)
+    // Update seeds (no rebuild — painter reads these directly)
     for (final seed in _seeds) {
       seed.update(dt);
       // Spawn glow particles from seed trail (with pool)
@@ -273,30 +296,31 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
     _particlePool.updateAll(dt);
 
     // Dandelion sway
-    if (_phase == _GamePhase.exhale && _breathActive) {
-      final swingAmp = 0.06 + _breathLevel * 0.10;
-      _swayTarget = sin(_exhaleElapsed * 3.5) * swingAmp;
+    if (_phase.value == _GamePhase.exhale && _breathActive.value) {
+      final swingAmp = 0.06 + _breathLevel.value * 0.10;
+      _swayTarget = sin(_exhaleElapsed.value * 3.5) * swingAmp;
     } else {
       _swayTarget = 0;
     }
-    _dandelionSway += (_swayTarget - _dandelionSway) * 4.0 * dt;
+    final newSway =
+        _dandelionSway.value + (_swayTarget - _dandelionSway.value) * 4.0 * dt;
+    _dandelionSway.value = newSway;
 
-    if (_phase == _GamePhase.exhale && !_endingExhale) {
-      _exhaleElapsed += dt;
-      if (_exhaleElapsed >= _maxExhaleSecs) {
+    if (_phase.value == _GamePhase.exhale && !_endingExhale) {
+      _exhaleElapsed.value += dt;
+      if (_exhaleElapsed.value >= _maxExhaleSecs) {
         _endingExhale = true;
         _endExhale();
       }
     }
 
-    // Notify the game painter to repaint (no widget rebuild for seeds/particles)
-    _repaintNotifier.notify();
+    // Sync render state for painters
+    _renderState.dandelionSway = _dandelionSway.value;
+    _renderState.breathLevel = _breathLevel.value;
+    _renderState.breathActive = _breathActive.value;
 
-    // Lightweight setState for UI elements (progress bar, breath indicator, sway)
-    // This is cheap because seeds/particles are in CustomPainter + RepaintBoundary
-    if (_phase == _GamePhase.exhale) {
-      setState(() {});
-    }
+    // Notify the game painter to repaint (no widget rebuild)
+    _repaintNotifier.notify();
   }
 
   // ─────────────────────────────────────────────
@@ -305,12 +329,10 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
 
   void _startPreparePhase() {
     if (!mounted) return;
-    setState(() {
-      _phase = _GamePhase.prepare;
-      _countdown = 3;
-      _endingExhale = false;
-      _breathLevel = 0;
-    });
+    _phase.value = _GamePhase.prepare;
+    _countdown.value = 3;
+    _endingExhale = false;
+    _breathLevel.value = 0;
 
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -318,22 +340,18 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
         timer.cancel();
         return;
       }
-      setState(() {
-        _countdown--;
-        if (_countdown <= 0) {
-          timer.cancel();
-          _startInhalePhase();
-        }
-      });
+      _countdown.value--;
+      if (_countdown.value <= 0) {
+        timer.cancel();
+        _startInhalePhase();
+      }
     });
   }
 
   void _startInhalePhase() {
     if (!mounted) return;
-    setState(() {
-      _phase = _GamePhase.inhale;
-      _countdown = 3;
-    });
+    _phase.value = _GamePhase.inhale;
+    _countdown.value = 3;
 
     // ★ Start ambient calibration — measure background noise during inhale
     _calibrationReadings.clear();
@@ -345,13 +363,11 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
         timer.cancel();
         return;
       }
-      setState(() {
-        _countdown--;
-        if (_countdown <= 0) {
-          timer.cancel();
-          _finishCalibrationAndStartExhale();
-        }
-      });
+      _countdown.value--;
+      if (_countdown.value <= 0) {
+        timer.cancel();
+        _finishCalibrationAndStartExhale();
+      }
     });
   }
 
@@ -392,17 +408,15 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
 
   void _startExhalePhase() {
     if (!mounted) return;
-    setState(() {
-      _phase = _GamePhase.exhale;
-      _exhaleElapsed = 0;
-      _lastRoundSeeds = 0;
-      _endingExhale = false;
-      _consecutiveAboveTicks = 0;
-      _breathActive = false;
-      _breathLevel = 0;
-      _showNoDetectionHint = false;
-      _everDetectedThisRound = false;
-    });
+    _phase.value = _GamePhase.exhale;
+    _exhaleElapsed.value = 0;
+    _lastRoundSeeds = 0;
+    _endingExhale = false;
+    _consecutiveAboveTicks = 0;
+    _breathActive.value = false;
+    _breathLevel.value = 0;
+    _showNoDetectionHint.value = false;
+    _everDetectedThisRound = false;
     _startNoiseListening();
     _startSeedSpawning();
     _startNoDetectionTimer();
@@ -411,8 +425,10 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
   void _startNoDetectionTimer() {
     _noDetectionTimer?.cancel();
     _noDetectionTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted && _phase == _GamePhase.exhale && !_everDetectedThisRound) {
-        setState(() => _showNoDetectionHint = true);
+      if (mounted &&
+          _phase.value == _GamePhase.exhale &&
+          !_everDetectedThisRound) {
+        _showNoDetectionHint.value = true;
       }
     });
   }
@@ -426,17 +442,17 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
     _noiseSubscription = _noiseMeter.noise.listen(
       (reading) {
         if (mounted) {
-          // Update values without setState — ticker drives repaints
+          // Update values — ticker drives repaints via _repaintNotifier
           _currentDb =
               reading.maxDecibel.isFinite ? reading.maxDecibel : 0.0;
-          _breathLevel =
+          _breathLevel.value =
               ((_currentDb - _dynamicThreshold) / _breathRangeDb)
                   .clamp(0.0, 1.0);
         }
       },
       onError: (_) {
         _currentDb = 0.0;
-        _breathLevel = 0;
+        _breathLevel.value = 0;
       },
       cancelOnError: false,
     );
@@ -450,7 +466,7 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
     _seedSpawnTimer?.cancel();
     _seedSpawnTimer =
         Timer.periodic(const Duration(milliseconds: 120), (_) {
-      if (!mounted || _phase != _GamePhase.exhale) return;
+      if (!mounted || _phase.value != _GamePhase.exhale) return;
 
       final normalized =
           ((_currentDb - _dynamicThreshold) / _breathRangeDb).clamp(0.0, 1.0);
@@ -458,21 +474,21 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
       if (normalized <= 0) {
         // ★ Below threshold → reset sustained counter
         _consecutiveAboveTicks = 0;
-        _breathActive = false;
+        _breathActive.value = false;
         return;
       }
 
       // ★ Sustained detection: must stay above threshold for 240ms+
       _consecutiveAboveTicks++;
       if (_consecutiveAboveTicks < _sustainedTicksRequired) return;
-      _breathActive = true;
+      _breathActive.value = true;
 
       // ★ First detection → hide hint, cancel timer
       if (!_everDetectedThisRound) {
         _everDetectedThisRound = true;
         _noDetectionTimer?.cancel();
-        if (_showNoDetectionHint) {
-          setState(() => _showNoDetectionHint = false);
+        if (_showNoDetectionHint.value) {
+          _showNoDetectionHint.value = false;
         }
       }
 
@@ -525,19 +541,17 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
     _seedSpawnTimer = null;
     _noDetectionTimer?.cancel();
 
-    setState(() {
-      _phase = _GamePhase.roundBreak;
-      _breathLevel = 0;
-      _showNoDetectionHint = false;
-      _dandelionSway = 0;
-      _swayTarget = 0;
-    });
+    _phase.value = _GamePhase.roundBreak;
+    _breathLevel.value = 0;
+    _showNoDetectionHint.value = false;
+    _dandelionSway.value = 0;
+    _swayTarget = 0;
 
-    _round++;
+    _round.value++;
 
     Future.delayed(const Duration(milliseconds: 2200), () {
       if (!mounted) return;
-      if (_round >= _totalRounds) {
+      if (_round.value >= _totalRounds) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) => ResultScreen(totalSeeds: _totalSeeds),
@@ -560,12 +574,17 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
       body: Stack(
         children: [
           _buildBackground(),
-          switch (_phase) {
-            _GamePhase.prepare => _buildPreparePhase(),
-            _GamePhase.inhale => _buildInhalePhase(),
-            _GamePhase.exhale => _buildExhalePhase(),
-            _GamePhase.roundBreak => _buildRoundBreak(),
-          },
+          ValueListenableBuilder<_GamePhase>(
+            valueListenable: _phase,
+            builder: (context, phase, _) {
+              return switch (phase) {
+                _GamePhase.prepare => _buildPreparePhase(),
+                _GamePhase.inhale => _buildInhalePhase(),
+                _GamePhase.exhale => _buildExhalePhase(),
+                _GamePhase.roundBreak => _buildRoundBreak(),
+              };
+            },
+          ),
         ],
       ),
     );
@@ -585,65 +604,76 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
   }
 
   Widget _buildRoundBadge() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: Text(
-        '${_round + 1} / $_totalRounds',
-        style: const TextStyle(
-          color: Color(0xFFFFD7A1),
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.5,
-        ),
-      ),
+    return ValueListenableBuilder<int>(
+      valueListenable: _round,
+      builder: (context, round, _) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Text(
+            '${round + 1} / $_totalRounds',
+            style: const TextStyle(
+              color: Color(0xFFFFD7A1),
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.5,
+            ),
+          ),
+        );
+      },
     );
   }
 
   // ★ Breath detection visual feedback indicator
   Widget _buildBreathIndicator() {
-    final level = _breathLevel.clamp(0.0, 1.0);
-    final isActive = _breathActive;
-    final baseSize = 52.0;
-    final pulseSize = baseSize + level * 24.0;
-    final glowOpacity = isActive ? 0.15 + level * 0.25 : 0.06;
-    final iconColor = isActive
-        ? Color.lerp(const Color(0xFF7ADAA5), const Color(0xFFB8F0D0), level)!
-        : const Color(0xFF4A7A62);
+    return ListenableBuilder(
+      listenable: Listenable.merge([_breathLevel, _breathActive]),
+      builder: (context, _) {
+        final level = _breathLevel.value.clamp(0.0, 1.0);
+        final isActive = _breathActive.value;
+        final baseSize = 52.0;
+        final pulseSize = baseSize + level * 24.0;
+        final glowOpacity = isActive ? 0.15 + level * 0.25 : 0.06;
+        final iconColor = isActive
+            ? Color.lerp(
+                const Color(0xFF7ADAA5), const Color(0xFFB8F0D0), level)!
+            : const Color(0xFF4A7A62);
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
-          width: pulseSize,
-          height: pulseSize,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: const Color(0xFF7ADAA5).withValues(alpha: glowOpacity),
-            border: Border.all(
-              color: iconColor.withValues(alpha: 0.5),
-              width: isActive ? 2.5 : 1.5,
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 100),
+              width: pulseSize,
+              height: pulseSize,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF7ADAA5).withValues(alpha: glowOpacity),
+                border: Border.all(
+                  color: iconColor.withValues(alpha: 0.5),
+                  width: isActive ? 2.5 : 1.5,
+                ),
+              ),
+              child: Icon(Icons.mic_rounded, color: iconColor, size: 24),
             ),
-          ),
-          child: Icon(Icons.mic_rounded, color: iconColor, size: 24),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          isActive ? '감지 중' : '숨을 내쉬세요',
-          style: TextStyle(
-            color: isActive
-                ? const Color(0xFF7ADAA5)
-                : Colors.white.withValues(alpha: 0.35),
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
+            const SizedBox(height: 8),
+            Text(
+              isActive ? '감지 중' : '숨을 내쉬세요',
+              style: TextStyle(
+                color: isActive
+                    ? const Color(0xFF7ADAA5)
+                    : Colors.white.withValues(alpha: 0.35),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -666,13 +696,18 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
                 ),
               ),
               child: Center(
-                child: Text(
-                  '$_countdown',
-                  style: const TextStyle(
-                    color: Color(0xFFF7F3E9),
-                    fontSize: 70,
-                    fontWeight: FontWeight.w900,
-                  ),
+                child: ValueListenableBuilder<int>(
+                  valueListenable: _countdown,
+                  builder: (context, countdown, _) {
+                    return Text(
+                      '$countdown',
+                      style: const TextStyle(
+                        color: Color(0xFFF7F3E9),
+                        fontSize: 70,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -724,13 +759,18 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
               ),
             ),
             const SizedBox(height: 6),
-            Text(
-              '$_countdown',
-              style: const TextStyle(
-                color: Color(0xFFFFD7A1),
-                fontSize: 56,
-                fontWeight: FontWeight.w900,
-              ),
+            ValueListenableBuilder<int>(
+              valueListenable: _countdown,
+              builder: (context, countdown, _) {
+                return Text(
+                  '$countdown',
+                  style: const TextStyle(
+                    color: Color(0xFFFFD7A1),
+                    fontSize: 56,
+                    fontWeight: FontWeight.w900,
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 8),
             // ★ Calibration status
@@ -762,16 +802,15 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
     return Stack(
       children: [
         // Breath-reactive background glow
-        if (_breathActive && _breathLevel > 0)
-          Positioned.fill(
-            child: CustomPaint(
-              painter: _BreathGlowPainter(
-                center: Offset(cx, cy),
-                breathLevel: _breathLevel,
-                repaintNotifier: _repaintNotifier,
-              ),
+        Positioned.fill(
+          child: CustomPaint(
+            painter: _BreathGlowPainter(
+              center: Offset(cx, cy),
+              renderState: _renderState,
+              repaintNotifier: _repaintNotifier,
             ),
           ),
+        ),
         // Particle + trail layer (CustomPainter — no widget rebuild needed)
         Positioned.fill(
           child: RepaintBoundary(
@@ -786,34 +825,48 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
           ),
         ),
         // Flying seeds — original SVG (flutter_svg caches parsed data internally)
-        ..._seeds.map((seed) {
-          return Positioned(
-            left: cx + seed.x - 20,
-            top: cy + seed.y - 25,
-            child: Opacity(
-              opacity: seed.opacity,
-              child: Transform.rotate(
-                angle: seed.rotation,
-                child: Transform.scale(
-                  scale: seed.size,
-                  child: SvgPicture.asset(
-                    'assets/dandelion_seed.svg',
-                    package: 'flutter_flame_breath_journey_game',
-                    width: 40,
-                    height: 50,
+        // Driven by _repaintNotifier via ListenableBuilder
+        ListenableBuilder(
+          listenable: _repaintNotifier,
+          builder: (context, _) {
+            return Stack(
+              children: _seeds.map((seed) {
+                return Positioned(
+                  left: cx + seed.x - 20,
+                  top: cy + seed.y - 25,
+                  child: Opacity(
+                    opacity: seed.opacity,
+                    child: Transform.rotate(
+                      angle: seed.rotation,
+                      child: Transform.scale(
+                        scale: seed.size,
+                        child: SvgPicture.asset(
+                          'assets/dandelion_seed.svg',
+                          package: 'flutter_flame_breath_journey_game',
+                          width: 40,
+                          height: 50,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ),
-          );
-        }),
+                );
+              }).toList(),
+            );
+          },
+        ),
         // Dandelion with breath sway
         Positioned(
           left: cx - 100,
           top: cy - 150,
-          child: Transform(
-            alignment: Alignment.bottomCenter,
-            transform: Matrix4.identity()..rotateZ(_dandelionSway),
+          child: ValueListenableBuilder<double>(
+            valueListenable: _dandelionSway,
+            builder: (context, sway, child) {
+              return Transform(
+                alignment: Alignment.bottomCenter,
+                transform: Matrix4.identity()..rotateZ(sway),
+                child: child,
+              );
+            },
             child: SvgPicture.asset(
               'assets/dandelion.svg',
               width: 200,
@@ -839,23 +892,34 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
               const SizedBox(height: 14),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 52),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: (_exhaleElapsed / _maxExhaleSecs).clamp(0.0, 1.0),
-                    minHeight: 7,
-                    backgroundColor: Colors.white12,
-                    valueColor:
-                        const AlwaysStoppedAnimation(Color(0xFF7ADAA5)),
-                  ),
+                child: ValueListenableBuilder<double>(
+                  valueListenable: _exhaleElapsed,
+                  builder: (context, elapsed, _) {
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: (elapsed / _maxExhaleSecs).clamp(0.0, 1.0),
+                        minHeight: 7,
+                        backgroundColor: Colors.white12,
+                        valueColor:
+                            const AlwaysStoppedAnimation(Color(0xFF7ADAA5)),
+                      ),
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 18),
               _buildBreathIndicator(),
               const SizedBox(height: 16),
-              AnimatedOpacity(
-                opacity: _showNoDetectionHint ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 600),
+              ValueListenableBuilder<bool>(
+                valueListenable: _showNoDetectionHint,
+                builder: (context, showHint, child) {
+                  return AnimatedOpacity(
+                    opacity: showHint ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 600),
+                    child: child,
+                  );
+                },
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 40),
                   padding:
@@ -911,7 +975,7 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
   }
 
   Widget _buildRoundBreak() {
-    final isLast = _round >= _totalRounds;
+    final isLast = _round.value >= _totalRounds;
     return SafeArea(
       child: Center(
         child: Column(
@@ -969,18 +1033,19 @@ class _GameRepaintNotifier extends ChangeNotifier {
 class _BreathGlowPainter extends CustomPainter {
   _BreathGlowPainter({
     required this.center,
-    required this.breathLevel,
+    required this.renderState,
     required _GameRepaintNotifier repaintNotifier,
   }) : super(repaint: repaintNotifier);
 
   final Offset center;
-  final double breathLevel;
+  final _DandelionRenderState renderState;
 
   static final Paint _glowPaint = Paint();
 
   @override
   void paint(Canvas canvas, Size size) {
-    final breathTint = breathLevel * 0.08;
+    if (!renderState.breathActive || renderState.breathLevel <= 0) return;
+    final breathTint = renderState.breathLevel * 0.08;
     if (breathTint <= 0) return;
     _glowPaint.shader = ui.Gradient.radial(
       Offset(center.dx, center.dy - size.height * 0.1),
