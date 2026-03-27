@@ -72,14 +72,9 @@ class _ResultScreenState extends State<ResultScreen>
   Duration _lastElapsed = Duration.zero;
   bool _surfacesMeasured = false;
 
-  // ── Bloom phase: seeds fade out → flowers bloom ──
+  // ── Seed fade ──
   bool _allSeedsLanded = false;
-  double _seedFadeOut = 1.0; // 1.0 = visible, 0.0 = gone
-  bool _bloomStarted = false;
-
-  late AnimationController _bloomController;
-  late Animation<double> _bloomScale;
-  late Animation<double> _bloomFade;
+  double _seedFadeOut = 1.0;
 
   // ── Text animations (keep existing) ──
   late AnimationController _countController;
@@ -100,8 +95,6 @@ class _ResultScreenState extends State<ResultScreen>
     _setupHeaderAnimation();
     _setupCountAnimation();
     _setupTextAnimations();
-    _setupBloomAnimation();
-
     _ticker = createTicker(_onTick)..start();
 
     _headerController.forward();
@@ -120,24 +113,6 @@ class _ResultScreenState extends State<ResultScreen>
     });
   }
 
-  void _setupBloomAnimation() {
-    _bloomController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    );
-    _bloomScale = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _bloomController,
-        curve: const Interval(0.0, 0.7, curve: Curves.easeOutBack),
-      ),
-    );
-    _bloomFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _bloomController,
-        curve: const Interval(0.0, 0.5, curve: Curves.easeIn),
-      ),
-    );
-  }
 
   void _setupHeaderAnimation() {
     _headerController = AnimationController(
@@ -283,7 +258,6 @@ class _ResultScreenState extends State<ResultScreen>
     _countController.dispose();
     _textController.dispose();
     _headerController.dispose();
-    _bloomController.dispose();
     super.dispose();
   }
 
@@ -327,19 +301,15 @@ class _ResultScreenState extends State<ResultScreen>
           _seedsSpawned >= widget.totalSeeds &&
           _seeds.every((s) => s.landed)) {
         _allSeedsLanded = true;
-        // Wait a moment, then fade out seeds and bloom flowers
+        // Wait a moment, then fade out seeds
         Future.delayed(const Duration(milliseconds: 1500), () {
-          if (mounted) setState(() => _bloomStarted = true);
+          if (mounted) setState(() => _seedFadeOut = 0.5);
         });
       }
 
-      // ★ Fade out seeds when bloom starts
-      if (_bloomStarted && _seedFadeOut > 0) {
+      // Fade out seeds gradually
+      if (_allSeedsLanded && _seedFadeOut > 0 && _seedFadeOut < 1.0) {
         _seedFadeOut = (_seedFadeOut - dt * 0.8).clamp(0.0, 1.0);
-        // Start bloom animation when seeds are half faded
-        if (_seedFadeOut < 0.5 && !_bloomController.isAnimating && !_bloomController.isCompleted) {
-          _bloomController.forward();
-        }
       }
     });
   }
@@ -390,66 +360,6 @@ class _ResultScreenState extends State<ResultScreen>
     }
   }
 
-  List<Widget> _buildBloomingFlowers() {
-    final screenWidth = MediaQuery.of(context).size.width;
-    const flowerSize = 160.0;
-
-    return [
-      // Flower 1 — bottom left area
-      Positioned(
-        left: screenWidth * 0.08,
-        bottom: 20,
-        child: AnimatedBuilder(
-          animation: _bloomController,
-          builder: (context, child) {
-            return Opacity(
-              opacity: _bloomFade.value,
-              child: Transform.scale(
-                scale: _bloomScale.value,
-                alignment: Alignment.bottomCenter,
-                child: child,
-              ),
-            );
-          },
-          child: Image.asset(
-            'assets/Gemini_Generated_Image_9934bl9934bl9934.png',
-            package: 'flutter_flame_breath_journey_game',
-            width: flowerSize,
-            height: flowerSize,
-            fit: BoxFit.contain,
-          ),
-        ),
-      ),
-      // Flower 2 — bottom right area (slightly delayed)
-      Positioned(
-        right: screenWidth * 0.05,
-        bottom: 10,
-        child: AnimatedBuilder(
-          animation: _bloomController,
-          builder: (context, child) {
-            final delayed = (_bloomController.value - 0.2).clamp(0.0, 1.0) / 0.8;
-            final scale = Curves.easeOutBack.transform(delayed);
-            final fade = Curves.easeIn.transform(delayed.clamp(0.0, 1.0));
-            return Opacity(
-              opacity: fade,
-              child: Transform.scale(
-                scale: scale,
-                alignment: Alignment.bottomCenter,
-                child: child,
-              ),
-            );
-          },
-          child: Image.asset(
-            'assets/Gemini_Generated_Image_3p3ukx3p3ukx3p3u.png',
-            package: 'flutter_flame_breath_journey_game',
-            width: flowerSize * 0.85,
-            height: flowerSize * 0.85,
-            fit: BoxFit.contain,
-          ),
-        ),
-      ),
-    ];
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -511,9 +421,6 @@ class _ResultScreenState extends State<ResultScreen>
             );
           }),
 
-          // ★ Blooming dandelion flowers
-          if (_bloomStarted)
-            ..._buildBloomingFlowers(),
 
           // Back button
           Positioned(

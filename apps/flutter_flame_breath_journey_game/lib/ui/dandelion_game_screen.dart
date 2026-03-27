@@ -438,13 +438,14 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
         timer.cancel();
         return;
       }
-      final count = 2 + _random.nextInt(2); // 2 or 3
+      final count = 8 + _random.nextInt(5); // 8~12 per second → 40~60 total
       for (int i = 0; i < count; i++) {
+        final angle = _random.nextDouble() * pi * 2;
         _attachedSeeds.add(_AttachedSeed(
-          angle: -pi + _random.nextDouble() * pi, // upper hemisphere: -pi to 0
-          distance: 15.0 + _random.nextDouble() * 20.0, // 15-35px
-          size: 0.3 + _random.nextDouble() * 0.2, // 0.3-0.5
-          rotation: (_random.nextDouble() - 0.5) * 0.8,
+          angle: angle,
+          distance: 8.0 + _random.nextDouble() * 35.0, // 8-43px (dense fill)
+          size: 0.6 + _random.nextDouble() * 0.4, // 0.6-1.0 (bigger)
+          rotation: angle + pi / 2,
         ));
       }
       _repaintNotifier.notify();
@@ -575,7 +576,7 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
     if (_attachedSeeds.isNotEmpty) {
       final attached = _attachedSeeds.removeLast();
       final seedX = cos(attached.angle) * attached.distance;
-      final seedY = sin(attached.angle) * attached.distance - 100;
+      final seedY = sin(attached.angle) * attached.distance;
 
       final spread = pi * 0.7;
       final angle = -pi / 2 + (_random.nextDouble() - 0.5) * spread;
@@ -697,12 +698,14 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
                     width: 200,
                     height: 300,
                   ),
-                  // Attached seeds (positioned around dandelion head center ~(100, 50))
+                  // Attached seeds (positioned around dandelion head center (100, 150) in SVG coords)
                   ..._attachedSeeds.map((seed) {
+                    const seedW = 55.0;
+                    const seedH = 80.0;
                     final seedLeft =
-                        100 + cos(seed.angle) * seed.distance - 10;
+                        100 + cos(seed.angle) * seed.distance - seedW / 2;
                     final seedTop =
-                        50 + sin(seed.angle) * seed.distance - 12;
+                        150 + sin(seed.angle) * seed.distance - seedH / 2;
                     return Positioned(
                       left: seedLeft,
                       top: seedTop,
@@ -715,8 +718,8 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
                             child: SvgPicture.asset(
                               'assets/dandelion_seed.svg',
                               package: 'flutter_flame_breath_journey_game',
-                              width: 20,
-                              height: 25,
+                              width: seedW,
+                              height: seedH,
                             ),
                           ),
                         ),
@@ -912,55 +915,68 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
   }
 
   Widget _buildInhalePhase() {
-    return SafeArea(
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildRoundBadge(),
-            const SizedBox(height: 32),
-            const Text(
-              '숨을 크게 들이쉬세요',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Color(0xFFF7F3E9),
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 6),
-            ValueListenableBuilder<int>(
-              valueListenable: _countdown,
-              builder: (context, countdown, _) {
-                return Text(
-                  '$countdown',
-                  style: const TextStyle(
-                    color: Color(0xFFFFD7A1),
-                    fontSize: 56,
-                    fontWeight: FontWeight.w900,
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-            // Calibration status
-            Text(
-              '주변 소음을 측정하고 있어요…',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.3),
-                fontSize: 12,
-              ),
-            ),
-            const SizedBox(height: 36),
-            SvgPicture.asset(
-              'assets/dandelion.svg',
-              package: 'flutter_flame_breath_journey_game',
-              width: 200,
-              height: 300,
-            ),
-          ],
+    final size = MediaQuery.of(context).size;
+    final cx = size.width / 2;
+    final cy = size.height * 0.58;
+
+    return Stack(
+      children: [
+        // Dandelion at same position as hold/exhale
+        Positioned(
+          left: cx - 100,
+          top: cy - 150,
+          child: SvgPicture.asset(
+            'assets/dandelion.svg',
+            package: 'flutter_flame_breath_journey_game',
+            width: 200,
+            height: 300,
+          ),
         ),
-      ),
+        // UI overlay
+        SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                const SizedBox(height: 28),
+                _buildRoundBadge(),
+                const SizedBox(height: 32),
+                const Text(
+                  '숨을 크게 들이쉬세요',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFFF7F3E9),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                ValueListenableBuilder<int>(
+                  valueListenable: _countdown,
+                  builder: (context, countdown, _) {
+                    return Text(
+                      '$countdown',
+                      style: const TextStyle(
+                        color: Color(0xFFFFD7A1),
+                        fontSize: 56,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '주변 소음을 측정하고 있어요…',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.3),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
