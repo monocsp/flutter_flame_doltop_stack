@@ -1082,7 +1082,9 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
             ),
             const SizedBox(height: 10),
             Text(
-              '새로운 별이 태어났어요',
+              _branchesCreatedThisRound
+                  ? '새로운 별이 태어났어요'
+                  : '다시 한번 해볼까요?',
               style: TextStyle(
                 color: _kLavender.withValues(alpha: 0.8),
                 fontSize: 16,
@@ -1176,7 +1178,7 @@ class _ConstellationPainter extends CustomPainter {
       canvas.drawCircle(screenPos, dot.radius * cameraZoom * 0.5, _bgDotPaint);
     }
 
-    // 3. Edges (shorten lines so they don't overlap star centers)
+    // 3. Edges (drawn full length — stars are drawn on top and cover overlap)
     for (final edge in constellation.edges) {
       if (edge.growthProgress <= 0) continue;
 
@@ -1187,40 +1189,21 @@ class _ConstellationPainter extends CustomPainter {
       final isActive = activeEdges.contains(edge);
 
       if (edge.growthProgress >= 1.0 && !isActive) {
-        // Fully completed edge — shorten both ends to avoid overlapping stars
         final toScreen = _worldToScreen(toStar.position, size);
-        final dir = toScreen - fromScreen;
-        final len = dir.distance;
-        if (len > 1) {
-          final norm = dir / len;
-          final fromInset = fromStar.radius * cameraZoom * 1.2;
-          final toInset = toStar.radius * cameraZoom * 1.2;
-          final p1 = fromScreen + norm * fromInset;
-          final p2 = toScreen - norm * toInset;
-          _edgePaint
-            ..color = _kAccent.withValues(alpha: 0.6)
-            ..strokeWidth = 1.5 * cameraZoom;
-          canvas.drawLine(p1, p2, _edgePaint);
-        }
+        _edgePaint
+          ..color = _kAccent.withValues(alpha: 0.6)
+          ..strokeWidth = 1.5 * cameraZoom;
+        canvas.drawLine(fromScreen, toScreen, _edgePaint);
       } else {
         // Growing edge
         final tip = Offset.lerp(fromStar.position, toStar.position,
             edge.growthProgress.clamp(0.0, 1.0))!;
         final tipScreen = _worldToScreen(tip, size);
 
-        // Shorten from start star
-        final dir = tipScreen - fromScreen;
-        final len = dir.distance;
-        Offset lineStart = fromScreen;
-        if (len > 1) {
-          final norm = dir / len;
-          lineStart = fromScreen + norm * (fromStar.radius * cameraZoom * 1.2);
-        }
-
         _edgePaint
           ..color = _kAccent.withValues(alpha: 0.5)
           ..strokeWidth = 1.5 * cameraZoom;
-        canvas.drawLine(lineStart, tipScreen, _edgePaint);
+        canvas.drawLine(fromScreen, tipScreen, _edgePaint);
 
         // Glow circle at tip
         final tipGlowRadius = 4.0 * cameraZoom;

@@ -142,7 +142,7 @@ int createBranches({
     final newStar = StarNode(
       id: state.nextStarId++,
       position: endpoint,
-      radius: 5.0 + random.nextDouble() * 3.0,
+      radius: 4.0 + random.nextDouble() * 5.0, // 4~9, noticeable size variety
       flickerPhase: random.nextDouble() * pi * 2,
     );
     state.stars.add(newStar);
