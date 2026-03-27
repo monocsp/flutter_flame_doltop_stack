@@ -155,12 +155,13 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
   static const double _fallbackThresholdDb = 52.0;
   static const double _maxExhaleSecs = 8.0;
   static const int _holdSeconds = 7;
+  static const double _defaultZoom = 1.8;
   static const int _sustainedTicksRequired = 2;
 
   // ── Game state ──
   _GamePhase _phase = _GamePhase.prepare;
   int _round = 0;
-  int _countdown = 3;
+  final ValueNotifier<int> _countdown = ValueNotifier<int>(3);
   double _exhaleElapsed = 0;
   bool _endingExhale = false;
 
@@ -174,7 +175,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
   Offset _cameraPosition = Offset.zero;
   Offset _cameraFrom = Offset.zero;
   Offset _cameraTo = Offset.zero;
-  final double _cameraZoom = 1.8;
+  double _cameraZoom = _defaultZoom;
   late AnimationController _cameraAnimController;
   late Animation<double> _cameraCurve;
 
@@ -275,6 +276,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     _noiseSubscription?.cancel();
     _repaintNotifier.dispose();
     _cameraAnimController.dispose();
+    _countdown.dispose();
     super.dispose();
   }
 
@@ -416,6 +418,35 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
       }
     }
 
+    // ── Dynamic zoom: zoom out during exhale if lines approach screen edge ──
+    if (_phase == _GamePhase.exhale && _activeEdges.isNotEmpty) {
+      final screenSize = MediaQuery.of(context).size;
+      double neededZoom = _defaultZoom;
+
+      for (final edge in _activeEdges) {
+        if (edge.growthProgress <= 0) continue;
+        final fromStar = _constellation.starById(edge.fromStarId);
+        final toStar = _constellation.starById(edge.toStarId);
+        final tip = Offset.lerp(
+            fromStar.position, toStar.position, edge.growthProgress)!;
+
+        final dx = (tip.dx - _cameraPosition.dx).abs();
+        final dy = (tip.dy - _cameraPosition.dy).abs();
+        const margin = 60.0;
+        if (dx > 1) {
+          neededZoom = min(neededZoom, (screenSize.width / 2 - margin) / dx);
+        }
+        if (dy > 1) {
+          neededZoom = min(neededZoom, (screenSize.height * 0.6 - margin) / dy);
+        }
+      }
+      neededZoom = neededZoom.clamp(0.8, _defaultZoom);
+      _cameraZoom += (neededZoom - _cameraZoom) * 3.0 * dt;
+    } else {
+      // Restore zoom when not in exhale
+      _cameraZoom += (_defaultZoom - _cameraZoom) * 3.0 * dt;
+    }
+
     // Notify painter
     _repaintNotifier.notify();
 
@@ -436,7 +467,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     if (!mounted) return;
     setState(() {
       _phase = _GamePhase.prepare;
-      _countdown = 3;
+      _countdown.value = 3;
       _endingExhale = false;
       _breathLevel = 0;
     });
@@ -447,21 +478,19 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
         timer.cancel();
         return;
       }
-      setState(() {
-        _countdown--;
-        if (_countdown <= 0) {
-          timer.cancel();
-          _startInhalePhase();
-        }
-      });
+      _countdown.value--;
+      if (_countdown.value <= 0) {
+        timer.cancel();
+        _startInhalePhase();
+      }
     });
   }
 
   void _startInhalePhase() {
     if (!mounted) return;
+    _countdown.value = 4; // 4-7-8: inhale 4 seconds
     setState(() {
       _phase = _GamePhase.inhale;
-      _countdown = 4; // 4-7-8: inhale 4 seconds
     });
 
     // Start ambient calibration
@@ -474,13 +503,11 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
         timer.cancel();
         return;
       }
-      setState(() {
-        _countdown--;
-        if (_countdown <= 0) {
-          timer.cancel();
-          _startHoldPhase();
-        }
-      });
+      _countdown.value--;
+      if (_countdown.value <= 0) {
+        timer.cancel();
+        _startHoldPhase();
+      }
     });
   }
 
@@ -503,9 +530,9 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
 
     // Start hold countdown (7 seconds)
     if (!mounted) return;
+    _countdown.value = _holdSeconds;
     setState(() {
       _phase = _GamePhase.hold;
-      _countdown = _holdSeconds;
     });
 
     _countdownTimer?.cancel();
@@ -514,13 +541,11 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
         timer.cancel();
         return;
       }
-      setState(() {
-        _countdown--;
-        if (_countdown <= 0) {
-          timer.cancel();
-          _startExhalePhase();
-        }
-      });
+      _countdown.value--;
+      if (_countdown.value <= 0) {
+        timer.cancel();
+        _startExhalePhase();
+      }
     });
   }
 
@@ -759,7 +784,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
       body: Stack(
         children: [
           // Constellation painter: hidden only during first round prepare/inhale
-          if (!(_round == 0 && (_phase == _GamePhase.prepare || _phase == _GamePhase.inhale || _phase == _GamePhase.hold)))
+          if (!(_round == 0 && (_phase == _GamePhase.prepare || _phase == _GamePhase.inhale)))
             Positioned.fill(
               child: RepaintBoundary(
                 child: CustomPaint(
@@ -872,12 +897,15 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
                 ),
               ),
               child: Center(
-                child: Text(
-                  '$_countdown',
-                  style: const TextStyle(
-                    color: _kText,
-                    fontSize: 70,
-                    fontWeight: FontWeight.w900,
+                child: ValueListenableBuilder<int>(
+                  valueListenable: _countdown,
+                  builder: (_, value, _) => Text(
+                    '$value',
+                    style: const TextStyle(
+                      color: _kText,
+                      fontSize: 70,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
               ),
@@ -942,12 +970,15 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
               ),
             ),
             const SizedBox(height: 6),
-            Text(
-              '$_countdown',
-              style: const TextStyle(
-                color: _kGold,
-                fontSize: 56,
-                fontWeight: FontWeight.w900,
+            ValueListenableBuilder<int>(
+              valueListenable: _countdown,
+              builder: (_, value, _) => Text(
+                '$value',
+                style: const TextStyle(
+                  color: _kGold,
+                  fontSize: 56,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -1002,12 +1033,15 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
               ),
             ),
             const SizedBox(height: 6),
-            Text(
-              '$_countdown',
-              style: const TextStyle(
-                color: _kGold,
-                fontSize: 56,
-                fontWeight: FontWeight.w900,
+            ValueListenableBuilder<int>(
+              valueListenable: _countdown,
+              builder: (_, value, _) => Text(
+                '$value',
+                style: const TextStyle(
+                  color: _kGold,
+                  fontSize: 56,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ),
             const SizedBox(height: 8),
