@@ -18,12 +18,14 @@ class _AttachedSeed {
     required this.distance,
     required this.size,
     required this.rotation,
+    required this.maxOpacity,
   });
 
   final double angle;
   final double distance;
   final double size;
   final double rotation;
+  final double maxOpacity; // each seed has different max opacity
   double opacity = 0.0;
 }
 
@@ -321,8 +323,8 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
 
     // Fade in attached seeds
     for (final seed in _attachedSeeds) {
-      if (seed.opacity < 1.0) {
-        seed.opacity = (seed.opacity + dt * 2.0).clamp(0.0, 1.0);
+      if (seed.opacity < seed.maxOpacity) {
+        seed.opacity = (seed.opacity + dt * 2.0).clamp(0.0, seed.maxOpacity);
       }
     }
 
@@ -438,14 +440,23 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
         timer.cancel();
         return;
       }
-      final count = 8 + _random.nextInt(5); // 8~12 per second → 40~60 total
+      final count = 10 + _random.nextInt(5); // 10~14 per second → 50~70 total
       for (int i = 0; i < count; i++) {
-        final angle = _random.nextDouble() * pi * 2;
+        // Fan shape: mostly upper hemisphere (-π to 0) with some below
+        final double angle;
+        if (_random.nextDouble() < 0.8) {
+          // 80%: upper fan (-π to 0, i.e. upward)
+          angle = -pi + _random.nextDouble() * pi;
+        } else {
+          // 20%: slightly below (0 to π*0.3)
+          angle = _random.nextDouble() * pi * 0.3;
+        }
         _attachedSeeds.add(_AttachedSeed(
           angle: angle,
-          distance: 8.0 + _random.nextDouble() * 35.0, // 8-43px (dense fill)
-          size: 0.6 + _random.nextDouble() * 0.4, // 0.6-1.0 (bigger)
+          distance: 10.0 + _random.nextDouble() * 40.0,
+          size: 0.6 + _random.nextDouble() * 0.5,
           rotation: angle + pi / 2,
+          maxOpacity: 0.5 + _random.nextDouble() * 0.5,
         ));
       }
       _repaintNotifier.notify();
@@ -572,67 +583,30 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
   }
 
   void _spawnSeed(double intensity) {
-    // If attached seeds remain, detach one and convert to flying seed
-    if (_attachedSeeds.isNotEmpty) {
-      final attached = _attachedSeeds.removeLast();
-      final seedX = cos(attached.angle) * attached.distance;
-      final seedY = sin(attached.angle) * attached.distance;
+    // Only detach from dandelion — no spawning from thin air
+    if (_attachedSeeds.isEmpty) return;
 
-      final spread = pi * 0.7;
-      final angle = -pi / 2 + (_random.nextDouble() - 0.5) * spread;
-      final speed = 40.0 + intensity * 100.0 + _random.nextDouble() * 25.0;
+    final attached = _attachedSeeds.removeLast();
+    final seedX = cos(attached.angle) * attached.distance;
+    final seedY = sin(attached.angle) * attached.distance;
 
-      _seeds.add(_FlyingSeed(
-        x: seedX,
-        y: seedY,
-        vx: cos(angle) * speed,
-        vy: sin(angle) * speed,
-        size: 0.3 + intensity * 0.5 + _random.nextDouble() * 0.2,
-        lifetime: 2.2 + intensity * 1.5 + _random.nextDouble() * 1.0,
-        windPhase: _random.nextDouble() * pi * 2,
-        wobbleAmp: 15.0 + _random.nextDouble() * 25.0,
-      ));
-      _lastRoundSeeds++;
-      _totalSeeds++;
-      _repaintNotifier.notify();
-      return;
-    }
-
-    // Normal spawn (no attached seeds left)
     final spread = pi * 0.7;
     final angle = -pi / 2 + (_random.nextDouble() - 0.5) * spread;
-    final speed = 60.0 + intensity * 130.0 + _random.nextDouble() * 35.0;
-
-    // Burst particles at spawn point (from pool)
-    for (int j = 0; j < 3; j++) {
-      final p = _particlePool.acquire();
-      if (p != null) {
-        p.reset(
-          x: (_random.nextDouble() - 0.5) * 10,
-          y: (_random.nextDouble() - 0.5) * 10,
-          vx: cos(angle) * speed * 0.3 + (_random.nextDouble() - 0.5) * 20,
-          vy: sin(angle) * speed * 0.3 + (_random.nextDouble() - 0.5) * 20,
-          radius: 2.0 + _random.nextDouble() * 3.0,
-          lifetime: 0.3 + _random.nextDouble() * 0.4,
-          color: _random.nextBool()
-              ? const Color(0xFFF7F3E9)
-              : const Color(0xFFE8E0D4),
-        );
-      }
-    }
+    final speed = 40.0 + intensity * 100.0 + _random.nextDouble() * 25.0;
 
     _seeds.add(_FlyingSeed(
-      x: (_random.nextDouble() - 0.5) * 18,
-      y: (_random.nextDouble() - 0.5) * 10,
+      x: seedX,
+      y: seedY,
       vx: cos(angle) * speed,
       vy: sin(angle) * speed,
-      size: 0.3 + intensity * 0.5 + _random.nextDouble() * 0.2,
+      size: attached.size, // same size as when attached
       lifetime: 2.2 + intensity * 1.5 + _random.nextDouble() * 1.0,
       windPhase: _random.nextDouble() * pi * 2,
       wobbleAmp: 15.0 + _random.nextDouble() * 25.0,
     ));
     _lastRoundSeeds++;
     _totalSeeds++;
+    _repaintNotifier.notify();
   }
 
   void _endExhale() {
@@ -691,21 +665,21 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
               return Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  // Dandelion SVG
+                  // Dandelion bold SVG (clean stem + head for seed attachment)
                   SvgPicture.asset(
-                    'assets/dandelion.svg',
+                    'assets/dandelion_bold.svg',
                     package: 'flutter_flame_breath_journey_game',
                     width: 200,
                     height: 300,
                   ),
-                  // Attached seeds (positioned around dandelion head center (100, 150) in SVG coords)
+                  // Attached seeds around dandelion head (SVG circle: cx=100, cy=148)
                   ..._attachedSeeds.map((seed) {
                     const seedW = 55.0;
-                    const seedH = 80.0;
+                    const seedH = 104.0; // tall seeds
                     final seedLeft =
                         100 + cos(seed.angle) * seed.distance - seedW / 2;
                     final seedTop =
-                        150 + sin(seed.angle) * seed.distance - seedH / 2;
+                        148 + sin(seed.angle) * seed.distance - seedH / 2;
                     return Positioned(
                       left: seedLeft,
                       top: seedTop,
