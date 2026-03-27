@@ -27,6 +27,20 @@ const Color _kTextMuted = Color(0xFFAFC3D9);
 enum _GamePhase { prepare, inhale, hold, exhale, roundBreak }
 
 // ─────────────────────────────────────────────
+// Mutable render state read by the painter
+// ─────────────────────────────────────────────
+
+class _GameRenderState {
+  Offset cameraPosition = Offset.zero;
+  double cameraZoom = 1.8;
+  double elapsedTime = 0;
+  bool breathActive = false;
+  double breathLevel = 0;
+  int nextStartStarId = 0;
+  _GamePhase phase = _GamePhase.prepare;
+}
+
+// ─────────────────────────────────────────────
 // Poolable particle
 // ─────────────────────────────────────────────
 
@@ -158,11 +172,16 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
   static const double _defaultZoom = 1.8;
   static const int _sustainedTicksRequired = 2;
 
-  // ── Game state ──
-  _GamePhase _phase = _GamePhase.prepare;
-  int _round = 0;
+  // ── ValueNotifier-backed UI state ──
+  final ValueNotifier<_GamePhase> _phase = ValueNotifier(_GamePhase.prepare);
+  final ValueNotifier<int> _round = ValueNotifier(0);
   final ValueNotifier<int> _countdown = ValueNotifier<int>(3);
-  double _exhaleElapsed = 0;
+  final ValueNotifier<double> _exhaleElapsed = ValueNotifier(0);
+  final ValueNotifier<double> _breathLevel = ValueNotifier(0.0);
+  final ValueNotifier<bool> _breathActive = ValueNotifier(false);
+  final ValueNotifier<bool> _showNoDetectionHint = ValueNotifier(false);
+
+  // ── Internal logic state (plain fields) ──
   bool _endingExhale = false;
 
   // ── Constellation ──
@@ -172,12 +191,13 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
   int _nextStartStarId = 0;
 
   // ── Camera ──
-  Offset _cameraPosition = Offset.zero;
   Offset _cameraFrom = Offset.zero;
   Offset _cameraTo = Offset.zero;
-  double _cameraZoom = _defaultZoom;
   late AnimationController _cameraAnimController;
   late Animation<double> _cameraCurve;
+
+  // ── Render state (shared mutable object read by painter) ──
+  final _GameRenderState _renderState = _GameRenderState();
 
   // ── Background star dust ──
   late final List<_BackgroundDot> _bgDots;
@@ -204,13 +224,8 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
 
   // ── Sustained detection ──
   int _consecutiveAboveTicks = 0;
-  bool _breathActive = false;
-
-  // ── Visual feedback (0.0 = silent, 1.0 = max breath) ──
-  double _breathLevel = 0.0;
 
   // ── No-detection hint ──
-  bool _showNoDetectionHint = false;
   Timer? _noDetectionTimer;
   bool _everDetectedThisRound = false;
 
@@ -218,8 +233,8 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
   Timer? _countdownTimer;
   Timer? _breathPollTimer;
 
-  // ── Elapsed time for twinkle animation ──
-  double _elapsedTime = 0;
+  // ── Branches created this round ──
+  bool _branchesCreatedThisRound = false;
 
   @override
   void initState() {
@@ -250,7 +265,8 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     _constellation.currentStarId = originStar.id;
     _nextStartStarId = originStar.id;
 
-    _cameraPosition = Offset.zero;
+    _renderState.cameraPosition = Offset.zero;
+    _renderState.nextStartStarId = _nextStartStarId;
     _cameraFrom = Offset.zero;
     _cameraTo = Offset.zero;
 
@@ -277,6 +293,12 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     _repaintNotifier.dispose();
     _cameraAnimController.dispose();
     _countdown.dispose();
+    _phase.dispose();
+    _round.dispose();
+    _exhaleElapsed.dispose();
+    _breathLevel.dispose();
+    _breathActive.dispose();
+    _showNoDetectionHint.dispose();
     super.dispose();
   }
 
@@ -286,12 +308,12 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
 
   Offset worldToScreen(Offset worldPos, Size screenSize) {
     final cameraWorldCenter = Offset(
-      _cameraPosition.dx,
-      _cameraPosition.dy - screenSize.height * 0.25 / _cameraZoom,
+      _renderState.cameraPosition.dx,
+      _renderState.cameraPosition.dy - screenSize.height * 0.25 / _renderState.cameraZoom,
     );
     return Offset(
-      (worldPos.dx - cameraWorldCenter.dx) * _cameraZoom + screenSize.width / 2,
-      (worldPos.dy - cameraWorldCenter.dy) * _cameraZoom +
+      (worldPos.dx - cameraWorldCenter.dx) * _renderState.cameraZoom + screenSize.width / 2,
+      (worldPos.dy - cameraWorldCenter.dy) * _renderState.cameraZoom +
           screenSize.height / 2,
     );
   }
@@ -310,11 +332,11 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
 
     if (dt <= 0 || dt > 0.1 || !mounted) return;
 
-    _elapsedTime += dt;
+    _renderState.elapsedTime += dt;
 
     // ── Camera interpolation (AnimationController-driven) ──
     if (_cameraAnimController.isAnimating) {
-      _cameraPosition = Offset.lerp(
+      _renderState.cameraPosition = Offset.lerp(
         _cameraFrom,
         _cameraTo,
         _cameraCurve.value,
@@ -329,7 +351,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     }
 
     // ── Edge growth during exhale (logarithmic deceleration) ──
-    if (_phase == _GamePhase.exhale && !_endingExhale && _breathActive) {
+    if (_phase.value == _GamePhase.exhale && !_endingExhale && _breathActive.value) {
       bool anyCompleted = false;
       for (final edge in _activeEdges) {
         if (edge.growthProgress < 1.0) {
@@ -338,7 +360,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
           final remaining = 1.0 - edge.growthProgress;
           final speedFactor = remaining.clamp(0.15, 1.0); // min 15% speed
           edge.growthProgress =
-              (edge.growthProgress + _breathLevel * 1.2 * speedFactor * dt)
+              (edge.growthProgress + _breathLevel.value * 1.2 * speedFactor * dt)
                   .clamp(0.0, 1.0);
 
           // When line reaches endpoint, trigger star bloom
@@ -381,7 +403,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     }
 
     // ── Spawn particles at edge growth tips ──
-    if (_phase == _GamePhase.exhale && _breathActive) {
+    if (_phase.value == _GamePhase.exhale && _breathActive.value) {
       for (final edge in _activeEdges) {
         if (edge.growthProgress > 0 && edge.growthProgress < 1.0) {
           if (_random.nextDouble() < 0.35) {
@@ -410,16 +432,16 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     _particlePool.updateAll(dt);
 
     // ── Exhale timer ──
-    if (_phase == _GamePhase.exhale && !_endingExhale) {
-      _exhaleElapsed += dt;
-      if (_exhaleElapsed >= _maxExhaleSecs) {
+    if (_phase.value == _GamePhase.exhale && !_endingExhale) {
+      _exhaleElapsed.value += dt;
+      if (_exhaleElapsed.value >= _maxExhaleSecs) {
         _endingExhale = true;
         _endExhale();
       }
     }
 
     // ── Dynamic zoom: zoom out during exhale if lines approach screen edge ──
-    if (_phase == _GamePhase.exhale && _activeEdges.isNotEmpty) {
+    if (_phase.value == _GamePhase.exhale && _activeEdges.isNotEmpty) {
       final screenSize = MediaQuery.of(context).size;
       double neededZoom = _defaultZoom;
 
@@ -430,8 +452,8 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
         final tip = Offset.lerp(
             fromStar.position, toStar.position, edge.growthProgress)!;
 
-        final dx = (tip.dx - _cameraPosition.dx).abs();
-        final dy = (tip.dy - _cameraPosition.dy).abs();
+        final dx = (tip.dx - _renderState.cameraPosition.dx).abs();
+        final dy = (tip.dy - _renderState.cameraPosition.dy).abs();
         const margin = 60.0;
         if (dx > 1) {
           neededZoom = min(neededZoom, (screenSize.width / 2 - margin) / dx);
@@ -441,22 +463,20 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
         }
       }
       neededZoom = neededZoom.clamp(0.8, _defaultZoom);
-      _cameraZoom += (neededZoom - _cameraZoom) * 3.0 * dt;
+      _renderState.cameraZoom += (neededZoom - _renderState.cameraZoom) * 3.0 * dt;
     } else {
       // Restore zoom when not in exhale
-      _cameraZoom += (_defaultZoom - _cameraZoom) * 3.0 * dt;
+      _renderState.cameraZoom += (_defaultZoom - _renderState.cameraZoom) * 3.0 * dt;
     }
+
+    // ── Sync render state for painter ──
+    _renderState.breathActive = _breathActive.value;
+    _renderState.breathLevel = _breathLevel.value;
+    _renderState.nextStartStarId = _nextStartStarId;
+    _renderState.phase = _phase.value;
 
     // Notify painter
     _repaintNotifier.notify();
-
-    // setState for UI overlays + camera position updates to painter
-    if (_phase == _GamePhase.exhale ||
-        _phase == _GamePhase.hold ||
-        _phase == _GamePhase.roundBreak ||
-        _cameraAnimController.isAnimating) {
-      setState(() {});
-    }
   }
 
   // ─────────────────────────────────────────────
@@ -465,12 +485,10 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
 
   void _startPreparePhase() {
     if (!mounted) return;
-    setState(() {
-      _phase = _GamePhase.prepare;
-      _countdown.value = 3;
-      _endingExhale = false;
-      _breathLevel = 0;
-    });
+    _countdown.value = 3;
+    _endingExhale = false;
+    _breathLevel.value = 0;
+    _phase.value = _GamePhase.prepare;
 
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -489,9 +507,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
   void _startInhalePhase() {
     if (!mounted) return;
     _countdown.value = 4; // 4-7-8: inhale 4 seconds
-    setState(() {
-      _phase = _GamePhase.inhale;
-    });
+    _phase.value = _GamePhase.inhale;
 
     // Start ambient calibration
     _calibrationReadings.clear();
@@ -531,9 +547,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     // Start hold countdown (7 seconds)
     if (!mounted) return;
     _countdown.value = _holdSeconds;
-    setState(() {
-      _phase = _GamePhase.hold;
-    });
+    _phase.value = _GamePhase.hold;
 
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -562,8 +576,6 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     );
   }
 
-  bool _branchesCreatedThisRound = false;
-
   void _startExhalePhase() {
     if (!mounted) return;
 
@@ -572,16 +584,14 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     _activeEdges = [];
     _branchesCreatedThisRound = false;
 
-    setState(() {
-      _phase = _GamePhase.exhale;
-      _exhaleElapsed = 0;
-      _endingExhale = false;
-      _consecutiveAboveTicks = 0;
-      _breathActive = false;
-      _breathLevel = 0;
-      _showNoDetectionHint = false;
-      _everDetectedThisRound = false;
-    });
+    _exhaleElapsed.value = 0;
+    _endingExhale = false;
+    _consecutiveAboveTicks = 0;
+    _breathActive.value = false;
+    _breathLevel.value = 0;
+    _showNoDetectionHint.value = false;
+    _everDetectedThisRound = false;
+    _phase.value = _GamePhase.exhale;
 
     _startNoiseListening();
     _startBreathPolling();
@@ -591,8 +601,8 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
   void _startNoDetectionTimer() {
     _noDetectionTimer?.cancel();
     _noDetectionTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted && _phase == _GamePhase.exhale && !_everDetectedThisRound) {
-        setState(() => _showNoDetectionHint = true);
+      if (mounted && _phase.value == _GamePhase.exhale && !_everDetectedThisRound) {
+        _showNoDetectionHint.value = true;
       }
     });
   }
@@ -608,14 +618,14 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
         if (mounted) {
           _currentDb =
               reading.maxDecibel.isFinite ? reading.maxDecibel : 0.0;
-          _breathLevel =
+          _breathLevel.value =
               ((_currentDb - _dynamicThreshold) / _breathRangeDb)
                   .clamp(0.0, 1.0);
         }
       },
       onError: (_) {
         _currentDb = 0.0;
-        _breathLevel = 0;
+        _breathLevel.value = 0;
       },
       cancelOnError: false,
     );
@@ -629,20 +639,20 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     _breathPollTimer?.cancel();
     _breathPollTimer =
         Timer.periodic(const Duration(milliseconds: 120), (_) {
-      if (!mounted || _phase != _GamePhase.exhale) return;
+      if (!mounted || _phase.value != _GamePhase.exhale) return;
 
       final normalized =
           ((_currentDb - _dynamicThreshold) / _breathRangeDb).clamp(0.0, 1.0);
 
       if (normalized <= 0) {
         _consecutiveAboveTicks = 0;
-        _breathActive = false;
+        _breathActive.value = false;
         return;
       }
 
       _consecutiveAboveTicks++;
       if (_consecutiveAboveTicks < _sustainedTicksRequired) return;
-      _breathActive = true;
+      _breathActive.value = true;
 
       // Create branches on first breath detection
       if (!_branchesCreatedThisRound) {
@@ -651,9 +661,9 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
         final nextId = createBranches(
           state: _constellation,
           random: _random,
-          breathIntensity: _breathLevel,
+          breathIntensity: _breathLevel.value,
           screenSize: screenSize,
-          cameraZoom: _cameraZoom,
+          cameraZoom: _renderState.cameraZoom,
         );
         _nextStartStarId = nextId;
         _activeEdges = _constellation.edges
@@ -664,8 +674,8 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
       if (!_everDetectedThisRound) {
         _everDetectedThisRound = true;
         _noDetectionTimer?.cancel();
-        if (_showNoDetectionHint) {
-          setState(() => _showNoDetectionHint = false);
+        if (_showNoDetectionHint.value) {
+          _showNoDetectionHint.value = false;
         }
       }
     });
@@ -690,9 +700,9 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     final nextId = createBranches(
       state: _constellation,
       random: _random,
-      breathIntensity: _breathLevel,
+      breathIntensity: _breathLevel.value,
       screenSize: MediaQuery.of(context).size,
-      cameraZoom: _cameraZoom,
+      cameraZoom: _renderState.cameraZoom,
     );
     _nextStartStarId = nextId;
 
@@ -746,21 +756,19 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
 
     // Animate camera to the next start star
     final nextStar = _constellation.starById(_nextStartStarId);
-    _cameraFrom = _cameraPosition;
+    _cameraFrom = _renderState.cameraPosition;
     _cameraTo = nextStar.position;
     _cameraAnimController.forward(from: 0);
 
-    setState(() {
-      _phase = _GamePhase.roundBreak;
-      _breathLevel = 0;
-      _showNoDetectionHint = false;
-    });
+    _breathLevel.value = 0;
+    _showNoDetectionHint.value = false;
+    _phase.value = _GamePhase.roundBreak;
 
-    _round++;
+    _round.value++;
 
     Future.delayed(const Duration(milliseconds: 2200), () {
       if (!mounted) return;
-      if (_round >= _totalRounds) {
+      if (_round.value >= _totalRounds) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) =>
@@ -784,97 +792,111 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
       body: Stack(
         children: [
           // Constellation painter: hidden only during first round prepare/inhale
-          if (!(_round == 0 && (_phase == _GamePhase.prepare || _phase == _GamePhase.inhale)))
-            Positioned.fill(
-              child: RepaintBoundary(
-                child: CustomPaint(
-                  painter: _ConstellationPainter(
-                    constellation: _constellation,
-                    activeEdges: _activeEdges,
-                    particlePool: _particlePool,
-                    bgDots: _bgDots,
-                    cameraPosition: _cameraPosition,
-                    cameraZoom: _cameraZoom,
-                    elapsedTime: _elapsedTime,
-                    breathActive: _breathActive,
-                    breathLevel: _breathLevel,
-                    nextStartStarId: _nextStartStarId,
-                    phase: _phase,
-                    repaintNotifier: _repaintNotifier,
+          ListenableBuilder(
+            listenable: Listenable.merge([_phase, _round]),
+            builder: (context, _) {
+              if (_round.value == 0 &&
+                  (_phase.value == _GamePhase.prepare ||
+                      _phase.value == _GamePhase.inhale)) {
+                return const SizedBox.shrink();
+              }
+              return Positioned.fill(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _ConstellationPainter(
+                      constellation: _constellation,
+                      activeEdges: _activeEdges,
+                      particlePool: _particlePool,
+                      bgDots: _bgDots,
+                      renderState: _renderState,
+                      repaintNotifier: _repaintNotifier,
+                    ),
                   ),
                 ),
-              ),
+              );
+            },
           ),
-          // UI overlay
-          switch (_phase) {
-            _GamePhase.prepare => _buildPreparePhase(),
-            _GamePhase.inhale => _buildInhalePhase(),
-            _GamePhase.hold => _buildHoldPhase(),
-            _GamePhase.exhale => _buildExhalePhase(),
-            _GamePhase.roundBreak => _buildRoundBreak(),
-          },
+          // UI overlay — phase switch
+          ValueListenableBuilder<_GamePhase>(
+            valueListenable: _phase,
+            builder: (_, phase, _) => switch (phase) {
+              _GamePhase.prepare => _buildPreparePhase(),
+              _GamePhase.inhale => _buildInhalePhase(),
+              _GamePhase.hold => _buildHoldPhase(),
+              _GamePhase.exhale => _buildExhalePhase(),
+              _GamePhase.roundBreak => _buildRoundBreak(),
+            },
+          ),
         ],
       ),
     );
   }
 
   Widget _buildRoundBadge() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: Text(
-        '${_round + 1} / $_totalRounds',
-        style: const TextStyle(
-          color: _kGold,
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.5,
+    return ValueListenableBuilder<int>(
+      valueListenable: _round,
+      builder: (_, round, _) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Text(
+          '${round + 1} / $_totalRounds',
+          style: const TextStyle(
+            color: _kGold,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.5,
+          ),
         ),
       ),
     );
   }
 
   Widget _buildBreathIndicator() {
-    final level = _breathLevel.clamp(0.0, 1.0);
-    final isActive = _breathActive;
-    const baseSize = 52.0;
-    final pulseSize = baseSize + level * 24.0;
-    final glowOpacity = isActive ? 0.15 + level * 0.25 : 0.06;
-    final iconColor = isActive
-        ? Color.lerp(_kAccent, _kText, level)!
-        : _kTextMuted;
+    return ListenableBuilder(
+      listenable: Listenable.merge([_breathLevel, _breathActive]),
+      builder: (context, _) {
+        final level = _breathLevel.value.clamp(0.0, 1.0);
+        final isActive = _breathActive.value;
+        const baseSize = 52.0;
+        final pulseSize = baseSize + level * 24.0;
+        final glowOpacity = isActive ? 0.15 + level * 0.25 : 0.06;
+        final iconColor = isActive
+            ? Color.lerp(_kAccent, _kText, level)!
+            : _kTextMuted;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
-          width: pulseSize,
-          height: pulseSize,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: _kAccent.withValues(alpha: glowOpacity),
-            border: Border.all(
-              color: iconColor.withValues(alpha: 0.5),
-              width: isActive ? 2.5 : 1.5,
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 100),
+              width: pulseSize,
+              height: pulseSize,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _kAccent.withValues(alpha: glowOpacity),
+                border: Border.all(
+                  color: iconColor.withValues(alpha: 0.5),
+                  width: isActive ? 2.5 : 1.5,
+                ),
+              ),
+              child: Icon(Icons.mic_rounded, color: iconColor, size: 24),
             ),
-          ),
-          child: Icon(Icons.mic_rounded, color: iconColor, size: 24),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          isActive ? '감지 중' : '숨을 내쉬세요',
-          style: TextStyle(
-            color: isActive ? _kAccent : Colors.white.withValues(alpha: 0.35),
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
+            const SizedBox(height: 8),
+            Text(
+              isActive ? '감지 중' : '숨을 내쉬세요',
+              style: TextStyle(
+                color: isActive ? _kAccent : Colors.white.withValues(alpha: 0.35),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -911,41 +933,49 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
               ),
             ),
             const SizedBox(height: 36),
-            Text(
-              _round == 0
-                  ? '입을 마이크에\n가까이 대세요'
-                  : '다음 별을\n이어볼까요?',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: _kText,
-                fontSize: 24,
-                fontWeight: FontWeight.w600,
-                height: 1.45,
+            ValueListenableBuilder<int>(
+              valueListenable: _round,
+              builder: (_, round, _) => Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    round == 0
+                        ? '입을 마이크에\n가까이 대세요'
+                        : '다음 별을\n이어볼까요?',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: _kText,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w600,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    round == 0 ? '별빛을 이을 준비를 해요' : '별빛이 기다리고 있어요',
+                    style: TextStyle(
+                      color: _kTextMuted.withValues(alpha: 0.7),
+                      fontSize: 14,
+                    ),
+                  ),
+                  if (round == 0) ...[
+                    const SizedBox(height: 18),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _kAccent.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.mic_rounded,
+                        color: _kAccent,
+                        size: 36,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              _round == 0 ? '별빛을 이을 준비를 해요' : '별빛이 기다리고 있어요',
-              style: TextStyle(
-                color: _kTextMuted.withValues(alpha: 0.7),
-                fontSize: 14,
-              ),
-            ),
-            if (_round == 0) ...[
-            const SizedBox(height: 18),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: _kAccent.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.mic_rounded,
-                color: _kAccent,
-                size: 36,
-              ),
-            ),
-            ],
           ],
         ),
       ),
@@ -1062,9 +1092,13 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     return Stack(
       children: [
         // UI overlay — fades out when breath is detected
-        AnimatedOpacity(
-          opacity: _breathActive ? 0.0 : 1.0,
-          duration: const Duration(milliseconds: 400),
+        ValueListenableBuilder<bool>(
+          valueListenable: _breathActive,
+          builder: (_, breathActive, child) => AnimatedOpacity(
+            opacity: breathActive ? 0.0 : 1.0,
+            duration: const Duration(milliseconds: 400),
+            child: child!,
+          ),
           child: SafeArea(
             child: Column(
             children: [
@@ -1084,20 +1118,27 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 52),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: (_exhaleElapsed / _maxExhaleSecs).clamp(0.0, 1.0),
-                    minHeight: 7,
-                    backgroundColor: Colors.white12,
-                    valueColor: const AlwaysStoppedAnimation(_kAccent),
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _exhaleElapsed,
+                    builder: (_, exhaleElapsed, _) => LinearProgressIndicator(
+                      value: (exhaleElapsed / _maxExhaleSecs).clamp(0.0, 1.0),
+                      minHeight: 7,
+                      backgroundColor: Colors.white12,
+                      valueColor: const AlwaysStoppedAnimation(_kAccent),
+                    ),
                   ),
                 ),
               ),
               const SizedBox(height: 18),
               _buildBreathIndicator(),
               const SizedBox(height: 16),
-              AnimatedOpacity(
-                opacity: _showNoDetectionHint ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 600),
+              ValueListenableBuilder<bool>(
+                valueListenable: _showNoDetectionHint,
+                builder: (_, showHint, child) => AnimatedOpacity(
+                  opacity: showHint ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 600),
+                  child: child!,
+                ),
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 40),
                   padding:
@@ -1154,7 +1195,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
   }
 
   Widget _buildRoundBreak() {
-    final isLast = _round >= _totalRounds;
+    final isLast = _round.value >= _totalRounds;
     return SafeArea(
       child: Center(
         child: Column(
@@ -1209,13 +1250,7 @@ class _ConstellationPainter extends CustomPainter {
     required this.activeEdges,
     required this.particlePool,
     required this.bgDots,
-    required this.cameraPosition,
-    required this.cameraZoom,
-    required this.elapsedTime,
-    required this.breathActive,
-    required this.breathLevel,
-    required this.nextStartStarId,
-    required this.phase,
+    required this.renderState,
     required _GameRepaintNotifier repaintNotifier,
   }) : super(repaint: repaintNotifier);
 
@@ -1223,13 +1258,7 @@ class _ConstellationPainter extends CustomPainter {
   final List<StarEdge> activeEdges;
   final _ParticlePool particlePool;
   final List<_BackgroundDot> bgDots;
-  final Offset cameraPosition;
-  final double cameraZoom;
-  final double elapsedTime;
-  final bool breathActive;
-  final double breathLevel;
-  final int nextStartStarId;
-  final _GamePhase phase;
+  final _GameRenderState renderState;
 
   // Reusable paint objects
   static final Paint _bgDotPaint = Paint();
@@ -1242,17 +1271,23 @@ class _ConstellationPainter extends CustomPainter {
 
   Offset _worldToScreen(Offset worldPos, Size size) {
     final cameraWorldCenter = Offset(
-      cameraPosition.dx,
-      cameraPosition.dy - size.height * 0.25 / cameraZoom,
+      renderState.cameraPosition.dx,
+      renderState.cameraPosition.dy - size.height * 0.25 / renderState.cameraZoom,
     );
     return Offset(
-      (worldPos.dx - cameraWorldCenter.dx) * cameraZoom + size.width / 2,
-      (worldPos.dy - cameraWorldCenter.dy) * cameraZoom + size.height / 2,
+      (worldPos.dx - cameraWorldCenter.dx) * renderState.cameraZoom + size.width / 2,
+      (worldPos.dy - cameraWorldCenter.dy) * renderState.cameraZoom + size.height / 2,
     );
   }
 
   @override
   void paint(Canvas canvas, Size size) {
+    final cameraPosition = renderState.cameraPosition;
+    final cameraZoom = renderState.cameraZoom;
+    final elapsedTime = renderState.elapsedTime;
+    final nextStartStarId = renderState.nextStartStarId;
+    final phase = renderState.phase;
+
     // 1. Background
     canvas.drawRect(
       Offset.zero & size,
