@@ -268,18 +268,24 @@ class _IntroScreenState extends State<IntroScreen> {
             const SizedBox(height: 22),
             _buildStep(
               '2',
-              '3초간 숨을 크게 들이쉬세요',
-              '화면 가운데 별이 기다려요',
+              '4초간 숨을 크게 들이쉬세요',
+              '별빛을 모으는 시간이에요',
             ),
             const SizedBox(height: 22),
             _buildStep(
               '3',
-              '천천히 내쉬면 별이 이어져요',
-              '오래 내쉴수록 별이 밝게 빛나요',
+              '7초간 숨을 참으세요',
+              '별빛이 응축돼요',
             ),
             const SizedBox(height: 22),
             _buildStep(
               '4',
+              '8초간 천천히 내쉬면 별이 이어져요',
+              '오래 내쉴수록 별이 밝게 빛나요',
+            ),
+            const SizedBox(height: 22),
+            _buildStep(
+              '5',
               '3번 반복하면 별자리가 완성돼요',
               '마지막엔 완성된 별자리를 확인해요',
             ),

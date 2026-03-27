@@ -24,7 +24,7 @@ const Color _kTextMuted = Color(0xFFAFC3D9);
 // Game phase enum
 // ─────────────────────────────────────────────
 
-enum _GamePhase { prepare, inhale, exhale, roundBreak }
+enum _GamePhase { prepare, inhale, hold, exhale, roundBreak }
 
 // ─────────────────────────────────────────────
 // Poolable particle
@@ -153,7 +153,8 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
   static const double _ambientOffsetDb = 10.0;
   static const double _breathRangeDb = 18.0;
   static const double _fallbackThresholdDb = 52.0;
-  static const double _maxExhaleSecs = 5.0;
+  static const double _maxExhaleSecs = 8.0;
+  static const int _holdSeconds = 7;
   static const int _sustainedTicksRequired = 2;
 
   // ── Game state ──
@@ -420,6 +421,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
 
     // setState for UI overlays + camera position updates to painter
     if (_phase == _GamePhase.exhale ||
+        _phase == _GamePhase.hold ||
         _phase == _GamePhase.roundBreak ||
         _cameraAnimController.isAnimating) {
       setState(() {});
@@ -459,7 +461,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     if (!mounted) return;
     setState(() {
       _phase = _GamePhase.inhale;
-      _countdown = 3;
+      _countdown = 4; // 4-7-8: inhale 4 seconds
     });
 
     // Start ambient calibration
@@ -476,13 +478,14 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
         _countdown--;
         if (_countdown <= 0) {
           timer.cancel();
-          _finishCalibrationAndStartExhale();
+          _startHoldPhase();
         }
       });
     });
   }
 
-  void _finishCalibrationAndStartExhale() {
+  void _startHoldPhase() {
+    // Finish calibration first
     _noiseSubscription?.cancel();
     _noiseSubscription = null;
 
@@ -497,7 +500,28 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     }
 
     _dynamicThreshold = _ambientDb + _ambientOffsetDb;
-    _startExhalePhase();
+
+    // Start hold countdown (7 seconds)
+    if (!mounted) return;
+    setState(() {
+      _phase = _GamePhase.hold;
+      _countdown = _holdSeconds;
+    });
+
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _countdown--;
+        if (_countdown <= 0) {
+          timer.cancel();
+          _startExhalePhase();
+        }
+      });
+    });
   }
 
   void _startCalibrationListening() {
@@ -735,7 +759,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
       body: Stack(
         children: [
           // Constellation painter: hidden only during first round prepare/inhale
-          if (!(_round == 0 && (_phase == _GamePhase.prepare || _phase == _GamePhase.inhale)))
+          if (!(_round == 0 && (_phase == _GamePhase.prepare || _phase == _GamePhase.inhale || _phase == _GamePhase.hold)))
             Positioned.fill(
               child: RepaintBoundary(
                 child: CustomPaint(
@@ -749,6 +773,8 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
                     elapsedTime: _elapsedTime,
                     breathActive: _breathActive,
                     breathLevel: _breathLevel,
+                    nextStartStarId: _nextStartStarId,
+                    phase: _phase,
                     repaintNotifier: _repaintNotifier,
                   ),
                 ),
@@ -758,6 +784,7 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
           switch (_phase) {
             _GamePhase.prepare => _buildPreparePhase(),
             _GamePhase.inhale => _buildInhalePhase(),
+            _GamePhase.hold => _buildHoldPhase(),
             _GamePhase.exhale => _buildExhalePhase(),
             _GamePhase.roundBreak => _buildRoundBreak(),
           },
@@ -956,6 +983,47 @@ class _ConstellationGameScreenState extends State<ConstellationGameScreen>
     );
   }
 
+  Widget _buildHoldPhase() {
+    // Pulsing happens on the actual star in the painter, not here
+    return SafeArea(
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildRoundBadge(),
+            const SizedBox(height: 32),
+            const Text(
+              '숨을 참으세요',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _kText,
+                fontSize: 28,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '$_countdown',
+              style: const TextStyle(
+                color: _kGold,
+                fontSize: 56,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '별빛이 응축되고 있어요...',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.3),
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildExhalePhase() {
     return Stack(
       children: [
@@ -1112,6 +1180,8 @@ class _ConstellationPainter extends CustomPainter {
     required this.elapsedTime,
     required this.breathActive,
     required this.breathLevel,
+    required this.nextStartStarId,
+    required this.phase,
     required _GameRepaintNotifier repaintNotifier,
   }) : super(repaint: repaintNotifier);
 
@@ -1124,6 +1194,8 @@ class _ConstellationPainter extends CustomPainter {
   final double elapsedTime;
   final bool breathActive;
   final double breathLevel;
+  final int nextStartStarId;
+  final _GamePhase phase;
 
   // Reusable paint objects
   static final Paint _bgDotPaint = Paint();
@@ -1266,25 +1338,49 @@ class _ConstellationPainter extends CustomPainter {
         _starPaint.color = _kText.withValues(alpha: 0.7 + expandT * 0.3);
         canvas.drawCircle(screenPos, radius, _starPaint);
       } else {
-        // Stage 4: stable + gentle twinkle
+        // Stage 4: stable star
+        final isNextStart = star.id == nextStartStarId;
+        final isHoldPulsing = isNextStart && phase == _GamePhase.hold;
+        final isHighlighted = isNextStart &&
+            (phase == _GamePhase.roundBreak ||
+             phase == _GamePhase.prepare ||
+             phase == _GamePhase.hold);
+
         final twinkle =
             0.85 + 0.15 * sin(elapsedTime * 2.0 + star.flickerPhase);
+
+        // Hold phase: pulsing effect on the next start star
+        final double pulseScale;
+        final double pulseGlow;
+        if (isHoldPulsing) {
+          final pulse = 0.5 + 0.5 * sin(elapsedTime * 1.8);
+          pulseScale = 1.0 + pulse * 0.4; // 1.0~1.4x
+          pulseGlow = 0.2 + pulse * 0.3;
+        } else {
+          pulseScale = 1.0;
+          pulseGlow = 0.12;
+        }
+
+        // Choose color: gold for highlighted, accent for normal
+        final glowColor = isHighlighted ? _kGold : _kAccent;
+        final coreColor = isHighlighted ? _kGold : _kText;
 
         // Outer glow
         _glowPaint.shader = ui.Gradient.radial(
             screenPos,
-            baseRadius * 3.5,
+            baseRadius * 3.5 * pulseScale,
             [
-              _kAccent.withValues(alpha: 0.12 * twinkle),
-              _kAccent.withValues(alpha: 0.0),
+              glowColor.withValues(alpha: pulseGlow * twinkle),
+              glowColor.withValues(alpha: 0.0),
             ],
           );
-        canvas.drawCircle(screenPos, baseRadius * 3.5, _glowPaint);
+        canvas.drawCircle(
+            screenPos, baseRadius * 3.5 * pulseScale, _glowPaint);
         _glowPaint.shader = null;
 
         // Core
-        _starPaint.color = _kText.withValues(alpha: twinkle);
-        canvas.drawCircle(screenPos, baseRadius, _starPaint);
+        _starPaint.color = coreColor.withValues(alpha: twinkle);
+        canvas.drawCircle(screenPos, baseRadius * pulseScale, _starPaint);
       }
     }
 
