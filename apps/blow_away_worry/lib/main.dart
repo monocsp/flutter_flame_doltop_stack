@@ -1,4 +1,4 @@
-import 'package:blow_away_worry/screens/blow_screen.dart';
+import 'package:blow_away_worry/screens/intro_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -29,7 +29,7 @@ class BlowAwayWorryApp extends StatelessWidget {
           baseTheme.textTheme,
         ).apply(bodyColor: Colors.white, displayColor: Colors.white),
       ),
-      home: const BlowScreen(),
+      home: const IntroScreen(),
     );
   }
 }
