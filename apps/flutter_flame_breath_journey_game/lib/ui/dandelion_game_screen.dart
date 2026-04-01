@@ -453,7 +453,7 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
         }
         _attachedSeeds.add(_AttachedSeed(
           angle: angle,
-          distance: 10.0 + _random.nextDouble() * 40.0,
+          distance: 4.0 + _random.nextDouble() * 14.0,
           size: 0.6 + _random.nextDouble() * 0.5,
           rotation: angle + pi / 2,
           maxOpacity: 0.5 + _random.nextDouble() * 0.5,
@@ -587,8 +587,12 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
     if (_attachedSeeds.isEmpty) return;
 
     final attached = _attachedSeeds.removeLast();
-    final seedX = cos(attached.angle) * attached.distance;
-    final seedY = sin(attached.angle) * attached.distance;
+    // Spawn at pappus visual center (accounts for rotation around connection point)
+    // Cropped SVG viewBox "13 3 74 96": achene bottom frac=0.99, pappus center frac≈0.23
+    // In 52px widget: distance = (0.99-0.23)*52 = 39.5, scaled by size
+    final pappusDist = attached.distance + 39.5 * attached.size;
+    final seedX = cos(attached.angle) * pappusDist;
+    final seedY = sin(attached.angle) * pappusDist;
 
     final spread = pi * 0.7;
     final angle = -pi / 2 + (_random.nextDouble() - 0.5) * spread;
@@ -665,29 +669,38 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
               return Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  // Dandelion bold SVG (clean stem + head for seed attachment)
-                  SvgPicture.asset(
-                    'assets/dandelion_bold.svg',
-                    package: 'flutter_flame_breath_journey_game',
+                  // Dandelion drawn with CustomPaint (precise head center)
+                  SizedBox(
                     width: 200,
                     height: 300,
+                    child: CustomPaint(painter: _DandelionBoldPainter()),
                   ),
-                  // Attached seeds around dandelion head (SVG circle: cx=100, cy=148)
+                  // Attached seeds — achene bottom anchored to head surface
+                  // SVG viewBox cropped to content: "13 3 74 96"
+                  // Achene bottom SVG y=98 → in viewBox: (98-3)/96 = 0.99
+                  // Stem center SVG x=50 → in viewBox: (50-13)/74 = 0.50
                   ..._attachedSeeds.map((seed) {
-                    const seedW = 55.0;
-                    const seedH = 104.0; // tall seeds
-                    final seedLeft =
-                        100 + cos(seed.angle) * seed.distance - seedW / 2;
-                    final seedTop =
-                        148 + sin(seed.angle) * seed.distance - seedH / 2;
+                    const seedW = 40.0;
+                    const seedH = 52.0; // ratio 74:96 ≈ 40:52
+                    const connFracY = 0.99; // achene bottom in cropped viewBox
+                    final targetX = _DandelionBoldPainter.headCenter.dx +
+                        cos(seed.angle) * seed.distance;
+                    final targetY = _DandelionBoldPainter.headCenter.dy +
+                        sin(seed.angle) * seed.distance;
+                    final seedLeft = targetX - seedW / 2;
+                    final seedTop = targetY - seedH * connFracY;
+                    // Alignment: (0.0, 2*0.99-1) = (0.0, 0.98)
+                    const connAlign = Alignment(0.0, 0.98);
                     return Positioned(
                       left: seedLeft,
                       top: seedTop,
                       child: Opacity(
                         opacity: seed.opacity,
                         child: Transform.rotate(
+                          alignment: connAlign,
                           angle: seed.rotation,
                           child: Transform.scale(
+                            alignment: connAlign,
                             scale: seed.size,
                             child: SvgPicture.asset(
                               'assets/dandelion_seed.svg',
@@ -899,11 +912,10 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
         Positioned(
           left: cx - 100,
           top: cy - 150,
-          child: SvgPicture.asset(
-            'assets/dandelion.svg',
-            package: 'flutter_flame_breath_journey_game',
+          child: const SizedBox(
             width: 200,
             height: 300,
+            child: CustomPaint(painter: _DandelionDecorativePainter()),
           ),
         ),
         // UI overlay
@@ -1049,9 +1061,10 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
           builder: (context, _) {
             return Stack(
               children: _seeds.map((seed) {
+                // Flying seed: 30×39 (same 74:96 ratio as cropped SVG)
                 return Positioned(
-                  left: cx + seed.x - 20,
-                  top: cy + seed.y - 25,
+                  left: cx + seed.x - 15,
+                  top: cy + seed.y - 19.5,
                   child: Opacity(
                     opacity: seed.opacity,
                     child: Transform.rotate(
@@ -1061,8 +1074,8 @@ class _DandelionGameScreenState extends State<DandelionGameScreen>
                         child: SvgPicture.asset(
                           'assets/dandelion_seed.svg',
                           package: 'flutter_flame_breath_journey_game',
-                          width: 40,
-                          height: 50,
+                          width: 30,
+                          height: 39,
                         ),
                       ),
                     ),
@@ -1322,4 +1335,117 @@ class _ParticleTrailPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ParticleTrailPainter oldDelegate) => false;
+}
+
+// ─────────────────────────────────────────────
+// Dandelion bold — stem + calyx + head (for hold/exhale, seeds attach here)
+// ─────────────────────────────────────────────
+
+class _DandelionBoldPainter extends CustomPainter {
+  const _DandelionBoldPainter();
+
+  /// Exact center of the dandelion head — seeds radiate from here
+  static const Offset headCenter = Offset(100, 148);
+  static const double headRadius = 8.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 1. Stem (quadratic bezier curve)
+    final stemPath = Path()
+      ..moveTo(100, 150)
+      ..quadraticBezierTo(97, 225, 102, 300);
+    canvas.drawPath(
+      stemPath,
+      Paint()
+        ..color = const Color(0xFFA5C7A1)
+        ..strokeWidth = 4
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // 2. Calyx (leaf base)
+    final calyxPath = Path()
+      ..moveTo(88, 153)
+      ..quadraticBezierTo(100, 163, 112, 153)
+      ..close();
+    canvas.drawPath(calyxPath, Paint()..color = const Color(0xFF699468));
+
+    // 3. Head circle
+    canvas.drawCircle(
+      headCenter,
+      headRadius,
+      Paint()..color = const Color(0xFFCECCC3),
+    );
+
+  }
+
+  @override
+  bool shouldRepaint(covariant _DandelionBoldPainter oldDelegate) => false;
+}
+
+// ─────────────────────────────────────────────
+// Decorative dandelion — full with seed lines and fluff (for inhale/prepare)
+// ─────────────────────────────────────────────
+
+class _DandelionDecorativePainter extends CustomPainter {
+  const _DandelionDecorativePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 1. Stem
+    final stemPath = Path()
+      ..moveTo(100, 150)
+      ..quadraticBezierTo(95, 225, 100, 300);
+    canvas.drawPath(
+      stemPath,
+      Paint()
+        ..color = const Color(0xFFA9C49F)
+        ..strokeWidth = 5
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // 2. Calyx
+    final calyxPath = Path()
+      ..moveTo(88, 155)
+      ..quadraticBezierTo(100, 165, 112, 155)
+      ..lineTo(100, 148)
+      ..close();
+    canvas.drawPath(calyxPath, Paint()..color = const Color(0xFF88A87D));
+
+    // 3. Seed stem lines (from center outward)
+    final linePaint = Paint()
+      ..color = const Color(0xFFEAECEA).withValues(alpha: 0.9)
+      ..strokeWidth = 1
+      ..strokeCap = StrokeCap.round;
+    const center = Offset(100, 150);
+    const endpoints = [
+      Offset(100, 60),
+      Offset(50, 75),
+      Offset(150, 75),
+      Offset(25, 120),
+      Offset(175, 120),
+    ];
+    for (final ep in endpoints) {
+      canvas.drawLine(center, ep, linePaint);
+    }
+
+    // 4. Seed fluff circles
+    final fluffPaint = Paint()
+      ..color = const Color(0xFFF7F9F5).withValues(alpha: 0.6);
+    for (final ep in endpoints) {
+      canvas.drawCircle(ep, 18, fluffPaint);
+    }
+
+    // 5. Center dot
+    canvas.drawCircle(
+      center,
+      7,
+      Paint()..color = const Color(0xFFD2CAB9),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _DandelionDecorativePainter oldDelegate) =>
+      false;
 }
