@@ -1,5 +1,7 @@
 # flutter_flame_doltop_stack
 
+> 만든 이유: 게이미피케이션 데모가 필요해서 Flame + Forge2D로 물리 기반 게임을 직접 만들어 봤습니다.
+
 > Flame + Forge2D 기반 2D 물리 게임 모노레포 — **돌탑 쌓기(Stone Stacking)** 와 **수박게임(Suika)** 두 편을 담고 있습니다.
 
 <!-- 배지 값(버전/라이선스 등)은 배포/공개 정책 확정 후 실제 값으로 교체하세요. -->
@@ -242,3 +244,8 @@ flutter_flame_doltop_stack/
 ---
 
 <sub>본 README는 소스 코드(pubspec / lib / melos.yaml) 기준으로 작성되었습니다. 배지 값·데모 미디어·라이선스 등 `[TODO]` 항목은 공개 정책 확정 후 채워 주세요.</sub>
+
+## 배운 점
+
+- 블록 모양 그대로 충돌을 잡으려고 이미지 픽셀에서 Convex Hull 폴리곤 콜라이더를 생성했습니다.
+- 프레임마다 물리를 돌리면 적층이 불안정해서, 고정 timestep(accumulator) 루프로 안정성을 확보했습니다.
